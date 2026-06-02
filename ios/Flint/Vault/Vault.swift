@@ -1,12 +1,27 @@
 // Vault — files-as-truth I/O.
 //
-// Responsibility: enumerate and read/write `.md` files in the user-chosen vault
-// folder via NSFileCoordinator/NSFilePresenter, accessed through a security-scoped
-// bookmark (see ADR-011) and routed behind the SyncProvider abstraction.
+// The files ARE the source of truth — never a database. This module enumerates
+// and reads/writes `.md` files in the user-chosen vault folder via
+// NSFileCoordinator/NSFilePresenter, reached through a security-scoped bookmark
+// (ADR-011). In T2 this access moves behind the SyncProvider abstraction.
 //
-// The files ARE the source of truth — never a database. Implemented in T1/T2.
+// Layout:
+//   - VaultNode        (here)            the folder/file tree model
+//   - VaultFileSystem  (VaultFileSystem) coordinated, stateless disk I/O
+//   - VaultStore       (VaultStore)      observable app-facing state
+//   - VaultPresenter   (VaultPresenter)  external-change watcher
 import Foundation
 
-enum Vault {
-    // Implementation lands in T1 (see docs/TASKS.md).
+/// A node in the vault tree: a folder or a `.md` file. Value type, Sendable so
+/// it can cross from the background I/O task to the main actor freely.
+struct VaultNode: Identifiable, Hashable, Sendable {
+    let url: URL
+    /// Display name. For `.md` files the extension is stripped.
+    let name: String
+    let isDirectory: Bool
+    /// `nil` for files and for pruned/empty folders (no disclosure triangle);
+    /// a (possibly empty) array for folders that contain notes.
+    var children: [VaultNode]?
+
+    var id: URL { url }
 }
