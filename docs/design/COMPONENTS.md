@@ -8,7 +8,15 @@ General rules: hairline borders (`border` / `border-subtle`) instead of shadows 
 
 ## Navigation shell  · T1
 
-The app frame. On iPhone: a stack (vault list → note). On iPad: a `NavigationSplitView` (sidebar + detail).
+The app frame, chosen by width (both match Obsidian).
+- **iPhone (compact): a push drawer** — the file tree shoves the note aside (it does **not** overlay), opened by a toolbar toggle or edge-swipe and dismissed by tapping/swiping the pushed note. A phone has no room for a side-by-side sidebar.
+- **iPad (regular): an overlay** — the tree floats *over* a full-width note behind a light scrim (`black` @ ~12%), slides in from the leading edge, and dismisses on scrim tap, toggle, or selecting a note. The scrim + a `border` hairline on its trailing edge separate it from the note — **no shadow** (§4). The iPad has room, so the note never gets squeezed; the sidebar is summoned and dismissed.
+
+The top bar shows the open note's name, or nothing. Both shells own exactly **one** sidebar toggle (a hand-rolled layout, not `NavigationSplitView`, whose injected toggle couldn't be removed).
+
+The **vault name lives in the sidebar header** (tap → switch/open another vault). Next to it, three icon buttons: **sort** (`arrow.up.arrow.down` → a menu: Name A–Z/Z–A, Modified newest/oldest, Created newest/oldest — folders always first; the choice is persisted), **new folder** (`folder.badge.plus`), and **new note** (`square.and.pencil`). There is no separate overflow menu, and no manual reload — the vault refreshes itself via the file presenter.
+
+Expanding a folder rotates its chevron and reveals children with a fade+slide (`motion.base`), not an abrupt row-pop.
 
 - **Background:** `bg`. **Sidebar:** `surface`, divided from detail by a `border` hairline.
 - **Folder/note tree:** rows at `space-2` vertical padding, `space-4` leading inset per depth level. Disclosure chevrons use SF Symbols in `text-muted`.
@@ -47,6 +55,7 @@ Tools, not a marketing site — keep these calm.
 - **Secondary:** `surface-raised` fill, `text-primary`, `border` hairline, `radius-md`.
 - **Tertiary / icon button:** no fill; SF Symbol in `text-secondary`, → `text-primary` on press. ≥44×44pt tap target even if the glyph is smaller.
 - **Toggle/switch:** native; tinted `accent` when on.
+- **Press feedback:** every button gets a visual press state — scale **0.97** + one-step fill shift over `motion.fast` (works on iPad and in the webview). Haptics are an iPhone-only enhancement layered on top and are *never* the sole feedback — full allowlist and the iPhone/iPad/Pencil limits are in [INTERACTION.md](./INTERACTION.md).
 
 ## Theme switching  · T5.2
 
@@ -63,6 +72,7 @@ Native `PKCanvasView`. Scope-locked: one page, save, embed, open (ADR-008). No i
 - **Tool picker:** prefer the system `PKToolPicker`. If a custom bar is needed, it sits on `surface` with a `border` top hairline, icon buttons per the icon-button spec, the active tool marked with an `accent` indicator.
 - **Chrome:** minimal top bar — back/done (`text-primary`), template switcher, undo/redo. `surface` background, `border` hairline. The canvas itself is edge-to-edge and crisp (§6).
 - **States:** drawing, idle, saving (a quiet `text-muted` indicator — never a blocking spinner for a local save).
+- **Haptics:** this is the *only* surface where iPad tactile feedback exists — a snap to a template grid/line or ruler fires `UICanvasFeedbackGenerator` with Apple Pencil Pro. See [INTERACTION.md](./INTERACTION.md).
 
 ## Ink — embed thumbnail  · T7
 

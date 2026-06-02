@@ -31,6 +31,11 @@ A long-form reading/writing tool lives or dies on accessibility. These are requi
 - Honor **Reduce Motion** (`UIAccessibility.isReduceMotionEnabled`) and `prefers-reduced-motion` in the webview. The thumbnail→canvas transition and panel slides degrade to a cross-fade or instant change.
 - No motion that is purely decorative (§9), so there is little to disable in the first place.
 
+## Haptics
+
+- Haptics are an **enhancement, never load-bearing**: the iPad has no Taptic Engine, so no action may rely on a haptic as its only feedback — every one is paired with a visual change. Full rationale and the allowlist are in [INTERACTION.md](./INTERACTION.md).
+- They are governed by the OS **System Haptics** setting (honored automatically), **not** Reduce Motion — don't gate them on the wrong toggle. Also provide an **in-app Haptics on/off** switch for a focus tool.
+
 ## Color-scheme & contrast settings
 
 - Respect system Dark/Light (dark-first, but the OS wins the choice).

@@ -10,8 +10,9 @@ The whole system is **derived from the app icon** ([`../../assets/brand/flint-ic
 2. **[COLOR.md](./COLOR.md)** — the warm-neutral ramp + the amber spark accent, light/dark, with contrast proofs.
 3. **[TYPOGRAPHY.md](./TYPOGRAPHY.md)** — three native, zero-bundle typefaces; the editor reading face.
 4. **[COMPONENTS.md](./COMPONENTS.md)** — the Phase 1 surfaces and their specs, mapped to `docs/TASKS.md`.
-5. **[ICONOGRAPHY.md](./ICONOGRAPHY.md)** — the flint/spark mark, app icon, SF Symbols policy.
-6. **[ACCESSIBILITY.md](./ACCESSIBILITY.md)** — Dynamic Type, contrast, VoiceOver, reduced motion.
+5. **[INTERACTION.md](./INTERACTION.md)** — press states + haptics, and the iPhone/iPad/webview hardware limits that shape them.
+6. **[ICONOGRAPHY.md](./ICONOGRAPHY.md)** — the flint/spark mark, app icon, SF Symbols policy.
+7. **[ACCESSIBILITY.md](./ACCESSIBILITY.md)** — Dynamic Type, contrast, VoiceOver, reduced motion.
 
 Design *decisions* (with rejected alternatives) live as `ADR-D*` entries in [`../DECISIONS.md`](../DECISIONS.md), same as engineering ADRs.
 

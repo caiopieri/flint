@@ -198,3 +198,17 @@ Decisions about the visual/interaction system. Full system in [`design/`](./desi
 **Rationale.** `ui-serif` resolves to New York on Apple platforms, so the webview editor and native chrome render identical fonts with no webfont, no FOUT, no licensing, no bundle weight. A serif makes the editor read as a document, not a form — calm and editorial, matching the warm palette.
 
 **Rejected.** A bundled custom/Google webfont (bundle weight, licensing, seam-matching pain); an all-sans system (loses the editorial reading feel); a serif for chrome (controls should feel native).
+
+---
+
+## ADR-D05 — Tactile feedback: visual press everywhere, haptics as a rare iPhone-only enhancement
+
+**Context.** "Tactile" buttons are two layers: a visual press state and a Taptic-Engine haptic. Flint runs on iPhone *and* iPad — and **no iPad has a Taptic Engine**, so UI haptics silently do nothing there. The editor is also CodeMirror in a WKWebView, and JS cannot fire the Taptic Engine.
+
+**Decision.** Ship a **visual press state on every control** (scale 0.97 + one-step fill shift, works on iPad and in the webview) as the baseline. Add **haptics only as an enhancement**, governed like the amber spark (§3) and motion (§9): rare, semantic, from a fixed allowlist in `design/INTERACTION.md`. No action depends on a haptic as its only feedback. The iPad's sole tactile channel is **Ink + Apple Pencil Pro** via `UICanvasFeedbackGenerator` (snap/alignment). Web-side haptics cross the typed bridge (`Flint.haptic(...)`), coarse and async — **never per-keystroke**.
+
+**Rationale.** Treating haptics as load-bearing would leave half the audience (iPad) feeling nothing. Restraint also fits a multi-hour focus tool, where haptic overuse becomes fatigue. Honors the OS **System Haptics** setting automatically (not Reduce Motion) plus an in-app toggle.
+
+**Rejected.** Faking iPad button haptics (impossible — no hardware); per-keystroke haptics in the editor (violates the coarse-bridge rule in `AGENTS.md`); a haptics token in `tokens.json` (haptics are semantic API calls, not visual values).
+
+**Implication (for implementation).** Prefer SwiftUI `.sensoryFeedback`; use `UICanvasFeedbackGenerator` for Ink snapping; gate custom haptics on an in-app toggle; branch on capability, never device model.

@@ -47,7 +47,7 @@ Respect Apple HIG and use system affordances (SF Symbols, system materials, stan
 
 ## 9. Motion is functional or absent.
 
-Animation conveys spatial/state change (a panel sliding in, a thumbnail expanding to the canvas) — never decoration. Keep it short (120–320ms) and always honor Reduce Motion / `prefers-reduced-motion`.
+Animation conveys spatial/state change (a panel sliding in, a thumbnail expanding to the canvas) — never decoration. Keep it short (120–320ms) and always honor Reduce Motion / `prefers-reduced-motion`. The same restraint governs **haptics** — the amber of touch, rare and semantic, and *never load-bearing* because the iPad has no Taptic Engine (see [INTERACTION.md](./INTERACTION.md)).
 
 ---
 

@@ -1,51 +1,41 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// Phase 1a empty state — no vault chosen yet.
-/// Spec: docs/design/COMPONENTS.md → "Navigation shell · T1" (Empty state) + Buttons.
-/// The real navigator (T1) and CodeMirror editor (T3) replace this. Every value
-/// references a design token (FlintColor/FlintSpace/FlintFont/FlintRadius) — never raw hex.
+/// Root shell. Switches between the empty state (no vault) and the vault
+/// navigator, and owns the single folder picker (.fileImporter, ADR-011).
 struct ContentView: View {
+    @State private var vault = VaultStore()
+    @State private var isPickingFolder = false
+
     var body: some View {
-        ZStack {
-            FlintColor.bg.ignoresSafeArea()
-
-            VStack(spacing: FlintSpace.s5) {
-                // Brand mark stand-in. The faceted flint mark
-                // (assets/brand/flint-icon.svg) is wired into the asset catalog
-                // later (docs/design/ICONOGRAPHY.md → "App icon" is implementation).
-                // SF Symbol keeps the layout and warm/amber tone correct for now.
-                Image(systemName: "sparkles")
-                    .font(.system(size: 44))
-                    .foregroundStyle(FlintColor.accent)
-
-                VStack(spacing: FlintSpace.s2) {
-                    Text("Flint")
-                        .font(FlintFont.readingH1)
-                        .foregroundStyle(FlintColor.textPrimary)
-                    Text("Choose a folder of Markdown files to open it as your vault.")
-                        .font(FlintFont.readingSmall)
-                        .foregroundStyle(FlintColor.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 300)
-                }
-
-                // Primary button — the one amber spark on screen (§3).
-                // T1 wires this to .fileImporter + a security-scoped bookmark (ADR-011).
-                Button {
-                    // TODO(T1): present the folder picker, persist the bookmark.
-                } label: {
-                    Text("Choose vault folder")
-                        .font(.headline)
-                        .foregroundStyle(FlintColor.textOnAccent)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(
-                            FlintColor.accent,
-                            in: RoundedRectangle(cornerRadius: FlintRadius.md, style: .continuous)
-                        )
-                }
-                .frame(maxWidth: 300)
+        Group {
+            if vault.hasVault {
+                VaultNavigator(vault: vault, chooseVault: { isPickingFolder = true })
+            } else {
+                VaultEmptyState { isPickingFolder = true }
             }
-            .padding(FlintSpace.s6)
+        }
+        // Layer-2 haptics (iPhone only; no-op on iPad), per INTERACTION.md allowlist:
+        // a light tick when a note is opened, an alert tap when an error surfaces.
+        .flintHaptic(.selection, trigger: vault.selection) { $0 != nil }
+        .flintHaptic(.error, trigger: vault.errorMessage) { $0 != nil }
+        .fileImporter(isPresented: $isPickingFolder, allowedContentTypes: [.folder]) { result in
+            switch result {
+            case .success(let url): vault.openVault(at: url)
+            case .failure(let error): vault.errorMessage = error.localizedDescription
+            }
+        }
+        .alert(
+            "Vault",
+            isPresented: Binding(
+                get: { vault.errorMessage != nil },
+                set: { if !$0 { vault.errorMessage = nil } }
+            ),
+            presenting: vault.errorMessage
+        ) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { message in
+            Text(message)
         }
     }
 }
