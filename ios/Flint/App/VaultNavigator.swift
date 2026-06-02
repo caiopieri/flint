@@ -55,6 +55,7 @@ private struct RegularNavigator: View {
                 .allowsHitTesting(showSidebar)
                 .contentShape(Rectangle())
                 .onTapGesture { setSidebar(false) }
+                .animation(.easeOut(duration: FlintMotion.base), value: showSidebar)
 
             SidebarContent(vault: vault, chooseVault: chooseVault, onSelectNote: { setSidebar(false) })
                 .frame(width: sidebarWidth)
@@ -63,12 +64,19 @@ private struct RegularNavigator: View {
                 // Structure via a hairline border, never a shadow (design system §4).
                 .overlay(alignment: .trailing) { FlintColor.border.frame(width: 1) }
                 .offset(x: showSidebar ? 0 : -sidebarWidth)
+                // When closed it's offset off-screen but still occupies its original
+                // hit region (over the toggle button) — so disable its touches, or it
+                // silently eats the tap meant to reopen it.
+                .allowsHitTesting(showSidebar)
+                .animation(.easeOut(duration: FlintMotion.base), value: showSidebar)
         }
         .background(FlintColor.bg)
     }
 
+    // Implicit `.animation(value:)` on the moved views drives both directions
+    // reliably, so this just flips state — no withAnimation needed.
     private func setSidebar(_ open: Bool) {
-        withAnimation(.easeOut(duration: FlintMotion.base)) { showSidebar = open }
+        showSidebar = open
     }
 }
 
