@@ -10,7 +10,7 @@ General rules: hairline borders (`border` / `border-subtle`) instead of shadows 
 
 The app frame, chosen by width (both match Obsidian).
 - **iPhone (compact): a push drawer** — the file tree shoves the note aside (it does **not** overlay), opened by a toolbar toggle or edge-swipe and dismissed by tapping/swiping the pushed note. A phone has no room for a side-by-side sidebar.
-- **iPad (regular): an overlay** — the tree floats *over* a full-width note behind a light scrim (`black` @ ~12%), slides in from the leading edge with a soft shadow, and dismisses on scrim tap, toggle, or selecting a note. The iPad has room, so the note never gets squeezed; the sidebar is summoned and dismissed.
+- **iPad (regular): an overlay** — the tree floats *over* a full-width note behind a light scrim (`black` @ ~12%), slides in from the leading edge, and dismisses on scrim tap, toggle, or selecting a note. The scrim + a `border` hairline on its trailing edge separate it from the note — **no shadow** (§4). The iPad has room, so the note never gets squeezed; the sidebar is summoned and dismissed.
 
 The top bar shows the open note's name, or nothing. Both shells own exactly **one** sidebar toggle (a hand-rolled layout, not `NavigationSplitView`, whose injected toggle couldn't be removed).
 

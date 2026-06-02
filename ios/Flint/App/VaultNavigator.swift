@@ -56,8 +56,8 @@ private struct RegularNavigator: View {
                     .frame(width: sidebarWidth)
                     .frame(maxHeight: .infinity)
                     .background(FlintColor.surface)
+                    // Structure via a hairline border, never a shadow (design system §4).
                     .overlay(alignment: .trailing) { FlintColor.border.frame(width: 1) }
-                    .shadow(color: .black.opacity(0.18), radius: 16, x: 4, y: 0)
                     .transition(.move(edge: .leading))
             }
         }
