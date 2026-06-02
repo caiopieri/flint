@@ -8,7 +8,7 @@ General rules: hairline borders (`border` / `border-subtle`) instead of shadows 
 
 ## Navigation shell  · T1
 
-The app frame. On iPhone: a stack (vault list → note). On iPad: a `NavigationSplitView` (sidebar + detail).
+The app frame, chosen by width. On iPhone (compact): a **slide-over drawer** — the note fills the screen and the file tree slides in from the leading edge (toggle button + edge-swipe + tap-scrim to dismiss), Obsidian-style, since a fixed sidebar doesn't fit a phone. On iPad (regular): a `NavigationSplitView` (sidebar + detail side by side).
 
 - **Background:** `bg`. **Sidebar:** `surface`, divided from detail by a `border` hairline.
 - **Folder/note tree:** rows at `space-2` vertical padding, `space-4` leading inset per depth level. Disclosure chevrons use SF Symbols in `text-muted`.
