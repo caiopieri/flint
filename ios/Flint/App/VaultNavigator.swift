@@ -31,32 +31,23 @@ private struct RegularNavigator: View {
     // sidebar injects its own toggle button that can't be reliably removed
     // (duplicate), and we want the tree to float *over* a full-width note, not
     // split it. Owning the layout gives exactly one toggle and full control.
-    // The sidebar stays in the hierarchy and slides via `offset` (like the iPhone
-    // drawer) rather than being inserted/removed with a transition — that way the
-    // open *and* close are symmetric; a `.transition` here only animated the entry.
+    // Overlay (never push): the note stays full-width; the sidebar slides over it.
+    // The open control is a real top-of-stack button, NOT a NavigationStack toolbar
+    // item — under the overlay on iPad that toolbar button silently won't fire.
     var body: some View {
-        ZStack(alignment: .leading) {
+        ZStack(alignment: .topLeading) {
             NavigationStack {
                 NoteDetail(vault: vault)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button("Toggle Sidebar", systemImage: "sidebar.leading") {
-                                setSidebar(!showSidebar)
-                            }
-                        }
-                    }
             }
 
-            // Light scrim: the note stays visible underneath; tap to dismiss.
-            // Fades with the sidebar and only catches taps while open.
+            // Light scrim over the note while open; tap to dismiss. Inert when closed.
             Color.black.opacity(0.12)
                 .ignoresSafeArea()
                 .opacity(showSidebar ? 1 : 0)
                 .allowsHitTesting(showSidebar)
-                .contentShape(Rectangle())
                 .onTapGesture { setSidebar(false) }
-                .animation(.easeOut(duration: FlintMotion.base), value: showSidebar)
 
+            // The sidebar slides over the content.
             SidebarContent(vault: vault, chooseVault: chooseVault, onSelectNote: { setSidebar(false) })
                 .frame(width: sidebarWidth)
                 .frame(maxHeight: .infinity)
@@ -64,16 +55,29 @@ private struct RegularNavigator: View {
                 // Structure via a hairline border, never a shadow (design system §4).
                 .overlay(alignment: .trailing) { FlintColor.border.frame(width: 1) }
                 .offset(x: showSidebar ? 0 : -sidebarWidth)
-                // When closed it's offset off-screen but still occupies its original
-                // hit region (over the toggle button) — so disable its touches, or it
-                // silently eats the tap meant to reopen it.
                 .allowsHitTesting(showSidebar)
-                .animation(.easeOut(duration: FlintMotion.base), value: showSidebar)
+
+            // Open button — only while closed (the sidebar header owns the top-left
+            // when open; close by tapping the scrim or a note). Topmost, so nothing
+            // can swallow the tap.
+            if !showSidebar {
+                Button { setSidebar(true) } label: {
+                    Image(systemName: "sidebar.leading")
+                        .font(.body)
+                        .foregroundStyle(FlintColor.textSecondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.flintPressable)
+                .padding(.leading, FlintSpace.s2)
+                .transition(.opacity)
+            }
         }
         .background(FlintColor.bg)
+        .animation(.easeOut(duration: FlintMotion.base), value: showSidebar)
     }
 
-    // Implicit `.animation(value:)` on the moved views drives both directions
+    // Implicit `.animation(value:)` on the container drives both directions
     // reliably, so this just flips state — no withAnimation needed.
     private func setSidebar(_ open: Bool) {
         showSidebar = open
