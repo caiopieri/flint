@@ -1,0 +1,16 @@
+{
+  "name": "flint-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Flint web runtime: CodeMirror editor + plugin runtime that runs inside the iOS WKWebView.",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}

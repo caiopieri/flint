@@ -18,7 +18,7 @@ Change these only with the author's sign-off (some are noted as the author's cal
 
 | Area | Decision | Notes |
 |---|---|---|
-| **Min iOS** | **iOS 18.0** | Personal-first → latest stable, modern SwiftUI/PencilKit. *Author's call — raise if you need older reach.* |
+| **Min iOS** | **iOS 26.0** | Personal-first → latest only, full access to the newest SwiftUI/PencilKit APIs. (Author has all current devices.) |
 | **Language** | **Swift 6**, strict concurrency (complete) | New project; adopt it from day 1 rather than migrate later. |
 | **Xcode** | Latest stable | |
 | **Native deps** | **SwiftPM only.** Start with **GRDB** (SQLite FTS5). Keep deps minimal. | No CocoaPods/Carthage. |
@@ -31,12 +31,21 @@ Change these only with the author's sign-off (some are noted as the author's cal
 
 ---
 
+## Prerequisites & build
+
+- **Xcode** (latest), **XcodeGen** (`brew install xcodegen`), **Node** (for the `web/` bundle).
+- The Xcode project is **generated** from `ios/project.yml` (not committed). Entry points via `make`:
+  - `make bootstrap` — install web deps, build the bundle, generate `ios/Flint.xcodeproj`
+  - `make build` — build the web bundle + the app for the iOS Simulator
+  - `make open` — generate + open in Xcode
+- Edit project structure/settings in `ios/project.yml`, never in the generated `.xcodeproj`.
+
 ## Phase 1a — Native editor (the first half of the MVP, a real milestone)
 
-### T0 — Project scaffold
-- [ ] T0.1 Create the Xcode SwiftUI app (iOS 18, Swift 6). Create the native folder structure from `ARCHITECTURE.md` (for 1a: `App/`, `Vault/`, `Search/`, `EditorHost/`, `Sync/`, `Bridge/`; stub `Ink/`, `AI/`, `Plugins/` as empty for later).
-- [ ] T0.2 Set up `web/` (TypeScript + esbuild). Produce a hello-world bundle and wire the build to copy it into the app's resources.
-- **DoD:** app launches on the simulator showing an empty shell; `web/` builds a bundle that ships inside the app.
+### T0 — Project scaffold ✅ (done)
+- [x] T0.1 Xcode SwiftUI app (iOS 26, Swift 6, strict concurrency) via XcodeGen. Native folder structure from `ARCHITECTURE.md`: `App/`, `Vault/`, `Search/`, `EditorHost/`, `Sync/`, `Bridge/` + stubbed `Ink/`, `AI/`, `Plugins/`.
+- [x] T0.2 `web/` (TypeScript + esbuild) producing a bundle, copied into the app's resources by `scripts/build-web.sh` (also an Xcode pre-build phase).
+- **DoD met:** `make build` → **BUILD SUCCEEDED** for the simulator; the web bundle ships inside `Flint.app/web/`; empty SwiftUI shell.
 
 ### T1 — Vault (files-as-truth)
 - [ ] T1.1 Folder picker (`.fileImporter`) to choose the vault folder; persist a **security-scoped bookmark**; resolve it on launch.
