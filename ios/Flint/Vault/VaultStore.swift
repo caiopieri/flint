@@ -16,7 +16,47 @@ final class VaultStore {
     private(set) var recents: [RecentVaultRef] = []
     var errorMessage: String?
 
+    /// How the file tree is ordered. Persisted; applied at display time so
+    /// switching is instant (no disk reload). Folders always come before files.
+    var sortOrder: VaultSort = .nameAsc {
+        didSet { UserDefaults.standard.set(sortOrder.rawValue, forKey: sortKey) }
+    }
+
+    /// The orderings offered by the sidebar's sort menu.
+    enum VaultSort: String, CaseIterable, Identifiable, Sendable {
+        case nameAsc, nameDesc
+        case modifiedDesc, modifiedAsc
+        case createdDesc, createdAsc
+
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .nameAsc:      return "Name (A–Z)"
+            case .nameDesc:     return "Name (Z–A)"
+            case .modifiedDesc: return "Modified (newest first)"
+            case .modifiedAsc:  return "Modified (oldest first)"
+            case .createdDesc:  return "Created (newest first)"
+            case .createdAsc:   return "Created (oldest first)"
+            }
+        }
+    }
+
     var hasVault: Bool { rootURL != nil }
+
+    /// Sort one level of the tree by the current order, folders always first.
+    func sortedChildren(_ nodes: [VaultNode]) -> [VaultNode] {
+        nodes.sorted { a, b in
+            if a.isDirectory != b.isDirectory { return a.isDirectory }
+            switch sortOrder {
+            case .nameAsc:      return a.name.localizedStandardCompare(b.name) == .orderedAscending
+            case .nameDesc:     return a.name.localizedStandardCompare(b.name) == .orderedDescending
+            case .modifiedDesc: return (a.modifiedAt ?? .distantPast) > (b.modifiedAt ?? .distantPast)
+            case .modifiedAsc:  return (a.modifiedAt ?? .distantPast) < (b.modifiedAt ?? .distantPast)
+            case .createdDesc:  return (a.createdAt ?? .distantPast) > (b.createdAt ?? .distantPast)
+            case .createdAsc:   return (a.createdAt ?? .distantPast) < (b.createdAt ?? .distantPast)
+            }
+        }
+    }
 
     /// A previously-opened vault, resolvable from its security-scoped bookmark.
     struct RecentVaultRef: Identifiable, Hashable, Sendable {
@@ -27,12 +67,17 @@ final class VaultStore {
 
     private let bookmarkKey = "flint.vault.bookmark"
     private let recentsKey = "flint.vault.recents"
+    private let sortKey = "flint.vault.sort"
     private let recentsLimit = 8
     private var accessedURL: URL?
     private var presenter: VaultPresenter?
     private var reloadTask: Task<Void, Never>?
 
     init() {
+        if let raw = UserDefaults.standard.string(forKey: sortKey),
+           let saved = VaultSort(rawValue: raw) {
+            sortOrder = saved
+        }
         loadRecents()
         restoreSavedVault()
     }
@@ -221,6 +266,19 @@ final class VaultStore {
             if let node = findNode(url, in: tree) { await open(node) }
         } catch {
             errorMessage = "Couldn't create a note: \(error.localizedDescription)"
+        }
+    }
+
+    /// Create a new folder at the vault root, then reload the tree.
+    func createFolder() async {
+        guard let root = rootURL else { return }
+        do {
+            _ = try await Task.detached(priority: .userInitiated) {
+                try VaultFileSystem.createFolder(in: root)
+            }.value
+            await reload()
+        } catch {
+            errorMessage = "Couldn't create a folder: \(error.localizedDescription)"
         }
     }
 

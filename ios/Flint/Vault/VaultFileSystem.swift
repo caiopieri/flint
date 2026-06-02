@@ -24,7 +24,8 @@ enum VaultFileSystem {
     static func buildTree(root: URL) throws -> VaultNode {
         try coordinatedRead(root) { url in
             try node(at: url, isRoot: true) ?? VaultNode(
-                url: url, name: url.lastPathComponent, isDirectory: true, children: []
+                url: url, name: url.lastPathComponent, isDirectory: true,
+                modifiedAt: nil, createdAt: nil, children: []
             )
         }
     }
@@ -45,6 +46,28 @@ enum VaultFileSystem {
             counter += 1
         }
         try writeNote("", to: candidate)
+        return candidate
+    }
+
+    /// Create a new folder in `directory`, picking a non-colliding name
+    /// ("New Folder", "New Folder 1", …). Returns the created folder's URL.
+    static func createFolder(in directory: URL, baseName: String = "New Folder") throws -> URL {
+        let fileManager = FileManager.default
+        var candidate = directory.appendingPathComponent(baseName)
+        var counter = 1
+        while fileManager.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(baseName) \(counter)")
+            counter += 1
+        }
+        let coordinator = NSFileCoordinator()
+        var coordError: NSError?
+        var thrown: Error?
+        coordinator.coordinate(writingItemAt: candidate, options: .forReplacing, error: &coordError) { dst in
+            do { try fileManager.createDirectory(at: dst, withIntermediateDirectories: true) }
+            catch { thrown = error }
+        }
+        if let coordError { throw VaultError.coordination(coordError) }
+        if let thrown { throw thrown }
         return candidate
     }
 
@@ -78,7 +101,12 @@ enum VaultFileSystem {
     /// Build one node. Returns nil for a directory subtree that contains no notes
     /// (so the caller can prune it).
     private static func node(at url: URL, isRoot: Bool) throws -> VaultNode? {
-        let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+        let values = try? url.resourceValues(
+            forKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey]
+        )
+        let isDir = values?.isDirectory ?? false
+        let modifiedAt = values?.contentModificationDate
+        let createdAt = values?.creationDate
 
         if !isDir {
             guard url.pathExtension.lowercased() == "md" else { return nil }
@@ -86,13 +114,15 @@ enum VaultFileSystem {
                 url: url,
                 name: url.deletingPathExtension().lastPathComponent,
                 isDirectory: false,
+                modifiedAt: modifiedAt,
+                createdAt: createdAt,
                 children: nil
             )
         }
 
         let entries = (try? FileManager.default.contentsOfDirectory(
             at: url,
-            includingPropertiesForKeys: [.isDirectoryKey],
+            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey],
             options: [.skipsHiddenFiles]
         )) ?? []
 
@@ -116,6 +146,8 @@ enum VaultFileSystem {
             url: url,
             name: url.lastPathComponent,
             isDirectory: true,
+            modifiedAt: modifiedAt,
+            createdAt: createdAt,
             children: children
         )
     }

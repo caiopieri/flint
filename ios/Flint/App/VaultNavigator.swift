@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// The app frame once a vault is open. Picks the right shell per width:
-/// iPad/regular → side-by-side NavigationSplitView (hideable); iPhone/compact →
-/// a push drawer (the tree shoves the note aside, Obsidian-style — not overlay).
-/// Spec: docs/design/COMPONENTS.md → "Navigation shell · T1".
+/// iPad/regular → the tree floats *over* the note (overlay with a light scrim);
+/// iPhone/compact → a push drawer (the tree shoves the note aside). Both match
+/// Obsidian: iPad has room to let the note stay full-width under an overlay,
+/// the phone doesn't, so it pushes. Spec: docs/design/COMPONENTS.md → "Navigation shell · T1".
 struct VaultNavigator: View {
     let vault: VaultStore
     var chooseVault: () -> Void
@@ -26,29 +27,45 @@ private struct RegularNavigator: View {
     @State private var showSidebar = true
     private let sidebarWidth: CGFloat = 320
 
-    // A hand-rolled split instead of NavigationSplitView: the iPadOS floating
-    // sidebar injects its own toggle button that can't be reliably removed,
-    // producing a duplicate. Owning the layout gives exactly one toggle.
+    // A hand-rolled overlay instead of NavigationSplitView: the iPadOS floating
+    // sidebar injects its own toggle button that can't be reliably removed
+    // (duplicate), and we want the tree to float *over* a full-width note, not
+    // split it. Owning the layout gives exactly one toggle and full control.
     var body: some View {
-        HStack(spacing: 0) {
-            if showSidebar {
-                SidebarContent(vault: vault, chooseVault: chooseVault)
-                    .frame(width: sidebarWidth)
-                    .overlay(alignment: .trailing) { FlintColor.border.frame(width: 1) }
-                    .transition(.move(edge: .leading))
-            }
+        ZStack(alignment: .leading) {
             NavigationStack {
                 NoteDetail(vault: vault)
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button("Toggle Sidebar", systemImage: "sidebar.leading") {
-                                withAnimation(.easeOut(duration: FlintMotion.base)) { showSidebar.toggle() }
+                                setSidebar(!showSidebar)
                             }
                         }
                     }
             }
+
+            if showSidebar {
+                // Light scrim: the note stays visible underneath; tap to dismiss.
+                Color.black.opacity(0.12)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { setSidebar(false) }
+                    .transition(.opacity)
+
+                SidebarContent(vault: vault, chooseVault: chooseVault, onSelectNote: { setSidebar(false) })
+                    .frame(width: sidebarWidth)
+                    .frame(maxHeight: .infinity)
+                    .background(FlintColor.surface)
+                    .overlay(alignment: .trailing) { FlintColor.border.frame(width: 1) }
+                    .shadow(color: .black.opacity(0.18), radius: 16, x: 4, y: 0)
+                    .transition(.move(edge: .leading))
+            }
         }
-        .background(FlintColor.surface)
+        .background(FlintColor.bg)
+    }
+
+    private func setSidebar(_ open: Bool) {
+        withAnimation(.easeOut(duration: FlintMotion.base)) { showSidebar = open }
     }
 }
 
@@ -167,6 +184,27 @@ private struct SidebarContent: View {
 
             Spacer(minLength: 0)
 
+            Menu {
+                Picker("Sort by", selection: Binding(
+                    get: { vault.sortOrder },
+                    set: { vault.sortOrder = $0 }
+                )) {
+                    ForEach(VaultStore.VaultSort.allCases) { order in
+                        Text(order.label).tag(order)
+                    }
+                }
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+            }
+            .labelStyle(.iconOnly)
+            .foregroundStyle(FlintColor.textSecondary)
+
+            Button("New folder", systemImage: "folder.badge.plus") {
+                Task { await vault.createFolder() }
+            }
+            .labelStyle(.iconOnly)
+            .foregroundStyle(FlintColor.textSecondary)
+
             Button("New note", systemImage: "square.and.pencil") {
                 onSelectNote?()
                 Task { await vault.createNote() }
@@ -197,23 +235,25 @@ private struct SidebarContent: View {
 
 // MARK: - The file tree
 
-/// A flat List driven by an explicit expansion set, so the **whole row** is the
-/// tap target (folders toggle, files open) — not just the label text.
+/// A LazyVStack driven by an explicit expansion set, so the **whole row** is the
+/// tap target (folders toggle, files open) — not just the label text. Expanding
+/// reveals children with a fade+slide and the chevron rotates, instead of the
+/// abrupt row-pop the List gave.
 private struct VaultTreeList: View {
     let vault: VaultStore
     var onSelectNote: (() -> Void)?
     @State private var expanded: Set<URL> = []
 
     var body: some View {
-        List {
-            ForEach(flattened(vault.tree?.children ?? [], depth: 0), id: \.node.id) { item in
-                row(item.node, depth: item.depth)
-                    .listRowBackground(rowBackground(item.node))
-                    .listRowSeparator(.hidden)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(flattened(vault.sortedChildren(vault.tree?.children ?? []), depth: 0), id: \.node.id) { item in
+                    row(item.node, depth: item.depth)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
+            .padding(.vertical, FlintSpace.s2)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .background(FlintColor.surface)
     }
 
@@ -222,7 +262,7 @@ private struct VaultTreeList: View {
         for node in nodes {
             rows.append((node, depth))
             if node.isDirectory, expanded.contains(node.url), let kids = node.children {
-                rows.append(contentsOf: flattened(kids, depth: depth + 1))
+                rows.append(contentsOf: flattened(vault.sortedChildren(kids), depth: depth + 1))
             }
         }
         return rows
@@ -231,7 +271,7 @@ private struct VaultTreeList: View {
     private func row(_ node: VaultNode, depth: Int) -> some View {
         Button {
             if node.isDirectory {
-                withAnimation(.easeOut(duration: FlintMotion.fast)) { toggle(node.url) }
+                withAnimation(.easeOut(duration: FlintMotion.base)) { toggle(node.url) }
             } else {
                 onSelectNote?()
                 Task { await vault.open(node) }
@@ -240,9 +280,10 @@ private struct VaultTreeList: View {
             HStack(spacing: FlintSpace.s2) {
                 Group {
                     if node.isDirectory {
-                        Image(systemName: expanded.contains(node.url) ? "chevron.down" : "chevron.right")
+                        Image(systemName: "chevron.right")
                             .font(.caption2)
                             .foregroundStyle(FlintColor.textMuted)
+                            .rotationEffect(.degrees(expanded.contains(node.url) ? 90 : 0))
                     } else {
                         Color.clear
                     }
@@ -259,9 +300,11 @@ private struct VaultTreeList: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(.leading, CGFloat(depth) * FlintSpace.s4)
+            .padding(.leading, CGFloat(depth) * FlintSpace.s4 + FlintSpace.s4)
+            .padding(.trailing, FlintSpace.s4)
             .padding(.vertical, FlintSpace.s2)
             .contentShape(Rectangle())
+            .background(rowBackground(node))
         }
         .buttonStyle(.plain)
     }

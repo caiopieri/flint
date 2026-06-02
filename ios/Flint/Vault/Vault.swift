@@ -19,6 +19,10 @@ struct VaultNode: Identifiable, Hashable, Sendable {
     /// Display name. For `.md` files the extension is stripped.
     let name: String
     let isDirectory: Bool
+    /// File-system dates, used by the sidebar's sort control. May be nil if the
+    /// volume doesn't report them.
+    let modifiedAt: Date?
+    let createdAt: Date?
     /// `nil` for files (no disclosure triangle); a (possibly empty) array for
     /// folders — empty folders are shown and expand to reveal nothing.
     var children: [VaultNode]?
