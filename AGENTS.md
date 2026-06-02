@@ -58,6 +58,8 @@ These override convenience. If a task conflicts with them, stop and flag it.
 
 The Plugin API is **extracted later**, with Ink/Board/Flows as its first consumers — don't design it in a vacuum.
 
+**The ordered, concrete plan + locked setup decisions (min iOS, Swift version, deps, bridge, vault access) live in [`docs/TASKS.md`](./docs/TASKS.md). Start there before writing any code.**
+
 ---
 
 ## Status

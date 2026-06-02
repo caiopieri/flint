@@ -128,3 +128,17 @@ Architecture Decision Records. Each entry: context, decision, rationale, and rej
 **Rationale.** A is literally the first half of B, so this isn't skipping steps. The early differentiator (Ink) crosses the valley; A de-risks it (if Ink stalls, there's still a usable editor). De-risking Ink to a separate embedded page makes B ≈ A + 20-30%, not 2×.
 
 **Rejected.** Shipping a pure-editor MVP and hoping it's enough to switch; attempting full Ink (infinite canvas/brushes/layers) in the MVP.
+
+---
+
+## ADR-011 — Vault access via document picker + security-scoped bookmark, not an iCloud container
+
+**Context.** The goal is to open the author's **existing** Obsidian vault, which lives inside Obsidian's own iCloud container (`iCloud~md~obsidian/...`). It is tempting to "just use iCloud" by giving Flint its own iCloud container.
+
+**Decision.** Flint opens a **user-chosen folder** via the document picker (`.fileImporter` / `UIDocumentPickerViewController`) and persists a **security-scoped bookmark** to it. All access goes through `NSFileCoordinator`/`NSFilePresenter`. Flint does **not** use its own iCloud container for the vault and does **not** assume the vault is in iCloud at all.
+
+**Rationale.** iOS sandboxing means an app **cannot read another app's iCloud container** — Flint can never reach Obsidian's container directly. A document-picked folder + security-scoped bookmark is the only way to open an arbitrary existing vault (Obsidian's iCloud folder, a local folder, a Working Copy repo, etc.). It also keeps files-as-truth honest: the vault is wherever the user keeps it, not a Flint-owned silo. "Sync" is whatever that folder already has (iCloud Drive, etc.), surfaced through `SyncProvider`.
+
+**Rejected.** A Flint-owned iCloud/CloudKit container as the vault home (can't open existing vaults; silos the user's notes); assuming the vault is always in iCloud.
+
+**Implication.** The `Vault` module starts from a bookmark, not a fixed path. Handle bookmark staleness/re-resolution and the `startAccessingSecurityScopedResource` lifecycle.
