@@ -19,8 +19,8 @@ struct VaultNode: Identifiable, Hashable, Sendable {
     /// Display name. For `.md` files the extension is stripped.
     let name: String
     let isDirectory: Bool
-    /// `nil` for files and for pruned/empty folders (no disclosure triangle);
-    /// a (possibly empty) array for folders that contain notes.
+    /// `nil` for files (no disclosure triangle); a (possibly empty) array for
+    /// folders — empty folders are shown and expand to reveal nothing.
     var children: [VaultNode]?
 
     var id: URL { url }

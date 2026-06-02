@@ -18,8 +18,9 @@ enum VaultFileSystem {
     }
 
     /// Recursively build the folder/`.md` tree under `root`. Hidden entries
-    /// (dotfiles, `.obsidian`, `.trash`, …) are skipped, and folders that end up
-    /// holding no notes are pruned so the navigator stays clean.
+    /// (dotfiles, `.obsidian`, `.trash`, …) are skipped. Folders are kept even
+    /// when empty (they exist on disk; files-as-truth) — only non-`.md` files are
+    /// omitted, since Phase 1 has no viewer for them.
     static func buildTree(root: URL) throws -> VaultNode {
         try coordinatedRead(root) { url in
             try node(at: url, isRoot: true) ?? VaultNode(
@@ -102,8 +103,9 @@ enum VaultFileSystem {
             }
         }
 
-        // Prune folders that hold no notes anywhere in their subtree.
-        if !isRoot && children.isEmpty { return nil }
+        // Folders are always shown — including empty ones — because the folder
+        // exists on disk (files-as-truth) and matches Obsidian's behavior.
+        // Expanding an empty folder simply reveals nothing.
 
         children.sort { a, b in
             if a.isDirectory != b.isDirectory { return a.isDirectory }   // folders first
