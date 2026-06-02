@@ -1,8 +1,8 @@
 // VaultStore — observable, app-facing vault state (T1).
 //
-// Owns the security-scoped bookmark lifecycle (ADR-011), the in-memory tree, the
-// currently open note, and the external-change watcher. UI reads this; all disk
-// work is delegated to VaultFileSystem on a background task.
+// Owns the security-scoped bookmark lifecycle (ADR-011), the recent-vaults list,
+// the in-memory tree, the currently open note, and the external-change watcher.
+// UI reads this; all disk work is delegated to VaultFileSystem on a background task.
 import Foundation
 import Observation
 
@@ -13,37 +13,65 @@ final class VaultStore {
     private(set) var tree: VaultNode?
     private(set) var selection: VaultNode?
     private(set) var noteText: String?
+    private(set) var recents: [RecentVaultRef] = []
     var errorMessage: String?
 
     var hasVault: Bool { rootURL != nil }
 
+    /// A previously-opened vault, resolvable from its security-scoped bookmark.
+    struct RecentVaultRef: Identifiable, Hashable, Sendable {
+        let id: String      // the folder path — stable across launches
+        let name: String
+        let bookmark: Data
+    }
+
     private let bookmarkKey = "flint.vault.bookmark"
+    private let recentsKey = "flint.vault.recents"
+    private let recentsLimit = 8
     private var accessedURL: URL?
     private var presenter: VaultPresenter?
     private var reloadTask: Task<Void, Never>?
 
     init() {
+        loadRecents()
         restoreSavedVault()
     }
 
-    // MARK: - Choosing / restoring the vault
+    // MARK: - Choosing / restoring / switching the vault
 
     /// Open a folder the user just picked. The picker grants access; we persist a
-    /// bookmark so the choice survives relaunch.
+    /// bookmark so the choice survives relaunch and add it to recents.
     func openVault(at url: URL) {
-        saveBookmark(for: url)
+        if let data = saveBookmark(for: url) { addRecent(data, url: url) }
         beginAccess(to: url)
+        selection = nil
+        noteText = nil
         scheduleReload()
     }
 
-    /// Forget the current vault (used by "Change vault folder").
-    func closeVault() {
-        stopAccess()
-        UserDefaults.standard.removeObject(forKey: bookmarkKey)
-        rootURL = nil
-        tree = nil
+    /// Switch to a previously-opened vault from the recents list.
+    func openRecent(_ ref: RecentVaultRef) {
+        var isStale = false
+        guard let url = try? URL(
+            resolvingBookmarkData: ref.bookmark,
+            options: [],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else {
+            errorMessage = "Couldn't open “\(ref.name)”. It may have moved."
+            removeRecent(ref)
+            return
+        }
+        beginAccess(to: url)
+        if isStale, let fresh = saveBookmark(for: url) {
+            addRecent(fresh, url: url)
+        } else {
+            UserDefaults.standard.set(ref.bookmark, forKey: bookmarkKey)
+            addRecent(ref.bookmark, url: url)   // promote to front
+        }
         selection = nil
         noteText = nil
+        scheduleReload()
     }
 
     private func restoreSavedVault() {
@@ -57,7 +85,11 @@ final class VaultStore {
                 bookmarkDataIsStale: &isStale
             )
             beginAccess(to: url)
-            if isStale { saveBookmark(for: url) }   // re-persist the refreshed bookmark
+            if isStale, let fresh = saveBookmark(for: url) {
+                addRecent(fresh, url: url)
+            } else {
+                addRecent(data, url: url)
+            }
             scheduleReload()
         } catch {
             errorMessage = "Couldn't reopen the saved vault. Choose it again."
@@ -65,7 +97,8 @@ final class VaultStore {
         }
     }
 
-    private func saveBookmark(for url: URL) {
+    @discardableResult
+    private func saveBookmark(for url: URL) -> Data? {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
         do {
@@ -75,8 +108,10 @@ final class VaultStore {
                 relativeTo: nil
             )
             UserDefaults.standard.set(data, forKey: bookmarkKey)
+            return data
         } catch {
             errorMessage = "Couldn't remember this folder: \(error.localizedDescription)"
+            return nil
         }
     }
 
@@ -92,6 +127,37 @@ final class VaultStore {
         stopWatching()
         accessedURL?.stopAccessingSecurityScopedResource()
         accessedURL = nil
+    }
+
+    // MARK: - Recents
+
+    private func loadRecents() {
+        let datas = (UserDefaults.standard.array(forKey: recentsKey) as? [Data]) ?? []
+        recents = datas.compactMap { ref(from: $0) }
+    }
+
+    private func ref(from bookmark: Data) -> RecentVaultRef? {
+        var isStale = false
+        guard let url = try? URL(
+            resolvingBookmarkData: bookmark,
+            options: [],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else { return nil }
+        return RecentVaultRef(id: url.path, name: url.lastPathComponent, bookmark: bookmark)
+    }
+
+    private func addRecent(_ bookmark: Data, url: URL) {
+        var list = recents.filter { $0.id != url.path }
+        list.insert(RecentVaultRef(id: url.path, name: url.lastPathComponent, bookmark: bookmark), at: 0)
+        if list.count > recentsLimit { list = Array(list.prefix(recentsLimit)) }
+        recents = list
+        UserDefaults.standard.set(list.map(\.bookmark), forKey: recentsKey)
+    }
+
+    private func removeRecent(_ ref: RecentVaultRef) {
+        recents.removeAll { $0.id == ref.id }
+        UserDefaults.standard.set(recents.map(\.bookmark), forKey: recentsKey)
     }
 
     // MARK: - Loading the tree
@@ -114,7 +180,6 @@ final class VaultStore {
             }.value
             tree = newTree
             errorMessage = nil
-            // Refresh the open note if it still exists; drop it otherwise.
             if let selection {
                 if FileManager.default.fileExists(atPath: selection.url.path) {
                     await open(selection)
@@ -128,7 +193,7 @@ final class VaultStore {
         }
     }
 
-    // MARK: - Opening a note
+    // MARK: - Opening / creating notes
 
     func open(_ node: VaultNode) async {
         guard !node.isDirectory else { return }

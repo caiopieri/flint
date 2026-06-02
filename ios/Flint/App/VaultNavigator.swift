@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The app frame once a vault is open. Picks the right shell per width:
-/// iPad/regular → side-by-side NavigationSplitView; iPhone/compact → a push
-/// drawer (the sidebar shoves the note aside, Obsidian-style — not an overlay).
+/// iPad/regular → side-by-side NavigationSplitView (hideable); iPhone/compact →
+/// a push drawer (the tree shoves the note aside, Obsidian-style — not overlay).
 /// Spec: docs/design/COMPONENTS.md → "Navigation shell · T1".
 struct VaultNavigator: View {
     let vault: VaultStore
@@ -23,13 +23,25 @@ struct VaultNavigator: View {
 private struct RegularNavigator: View {
     let vault: VaultStore
     var chooseVault: () -> Void
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarContent(vault: vault, chooseVault: chooseVault)
                 .toolbar(.hidden, for: .navigationBar)
         } detail: {
-            NoteDetail(vault: vault)
+            NavigationStack {
+                NoteDetail(vault: vault)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Toggle Sidebar", systemImage: "sidebar.leading") {
+                                withAnimation {
+                                    columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+                                }
+                            }
+                        }
+                    }
+            }
         }
     }
 }
@@ -49,7 +61,6 @@ private struct CompactNavigator: View {
             HStack(spacing: 0) {
                 SidebarContent(vault: vault, chooseVault: chooseVault, onSelectNote: { setOpen(false) })
                     .frame(width: sidebarW)
-                    .background(FlintColor.surface)
                     .overlay(alignment: .trailing) { FlintColor.border.frame(width: 1) }
 
                 ZStack {
@@ -62,8 +73,8 @@ private struct CompactNavigator: View {
                             }
                             .navigationBarTitleDisplayMode(.inline)
                     }
-                    // Tap/drag the pushed-aside note to dismiss the drawer
-                    // (no dimming — the sidebar pushes, it doesn't overlay).
+                    // Tap/swipe the pushed-aside note to dismiss (no dimming —
+                    // the tree pushes, it doesn't overlay).
                     if isOpen {
                         Color.clear
                             .ignoresSafeArea()
@@ -76,7 +87,6 @@ private struct CompactNavigator: View {
                     }
                 }
                 .frame(width: screenW)
-                // Edge-swipe from the leading edge to open.
                 .overlay(alignment: .leading) {
                     if !isOpen {
                         Color.clear
@@ -104,7 +114,7 @@ private struct CompactNavigator: View {
 
 // MARK: - Sidebar content (shared by both shells)
 
-/// The vault name (tap to switch vault) + a new-note button, over the file tree.
+/// The vault name (tap → switch/open vault) + a new-note button, over the file tree.
 private struct SidebarContent: View {
     let vault: VaultStore
     var chooseVault: () -> Void
@@ -115,7 +125,11 @@ private struct SidebarContent: View {
         VStack(spacing: 0) {
             header
             FlintColor.border.frame(height: 1)
-            tree
+            if vault.tree?.children?.isEmpty ?? true {
+                emptyState
+            } else {
+                VaultTreeList(vault: vault, onSelectNote: onSelectNote)
+            }
         }
         .background(FlintColor.surface)
     }
@@ -123,8 +137,15 @@ private struct SidebarContent: View {
     private var header: some View {
         HStack(spacing: FlintSpace.s2) {
             Menu {
-                Button("Open another vault…", systemImage: "folder", action: chooseVault)
-                // TODO: recent vaults + create vault live here.
+                ForEach(vault.recents) { ref in
+                    Button {
+                        vault.openRecent(ref)
+                    } label: {
+                        Label(ref.name, systemImage: ref.id == vault.rootURL?.path ? "checkmark" : "folder")
+                    }
+                }
+                if !vault.recents.isEmpty { Divider() }
+                Button("Open another vault…", systemImage: "plus", action: chooseVault)
             } label: {
                 HStack(spacing: FlintSpace.s1) {
                     Text(vault.tree?.name ?? "Vault")
@@ -151,68 +172,111 @@ private struct SidebarContent: View {
         .padding(.vertical, FlintSpace.s3)
     }
 
-    @ViewBuilder
-    private var tree: some View {
-        if vault.tree?.children?.isEmpty ?? true {
-            ContentUnavailableView {
-                Label("No notes yet", systemImage: "doc.text")
-            } description: {
-                Text("This folder has no Markdown notes.")
-            } actions: {
-                Button("New note") {
-                    onSelectNote?()
-                    Task { await vault.createNote() }
-                }
-                .buttonStyle(.flintPrimary)
-                .frame(maxWidth: 240)
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label("No notes yet", systemImage: "doc.text")
+        } description: {
+            Text("This folder has no Markdown notes.")
+        } actions: {
+            Button("New note") {
+                onSelectNote?()
+                Task { await vault.createNote() }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            List {
-                if let children = vault.tree?.children {
-                    OutlineGroup(children, children: \.children) { node in
-                        VaultRow(node: node, isSelected: node.id == vault.selection?.id) {
-                            onSelectNote?()
-                            Task { await vault.open(node) }
-                        }
-                        .listRowBackground(Color.clear)
-                    }
-                }
-            }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .background(FlintColor.surface)
+            .buttonStyle(.flintPrimary)
+            .frame(maxWidth: 240)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-/// One row in the folder/note tree. Folders just expand; tapping a note opens it.
-/// Selected note gets a surface-raised fill + a 2pt amber leading bar (§3).
-private struct VaultRow: View {
-    let node: VaultNode
-    let isSelected: Bool
-    var open: () -> Void
+// MARK: - The file tree
+
+/// A flat List driven by an explicit expansion set, so the **whole row** is the
+/// tap target (folders toggle, files open) — not just the label text.
+private struct VaultTreeList: View {
+    let vault: VaultStore
+    var onSelectNote: (() -> Void)?
+    @State private var expanded: Set<URL> = []
 
     var body: some View {
-        if node.isDirectory {
-            Label(node.name, systemImage: "folder")
-                .foregroundStyle(FlintColor.textSecondary)
-        } else {
-            Button(action: open) {
-                Label(node.name, systemImage: "doc.text")
-                    .foregroundStyle(isSelected ? FlintColor.textPrimary : FlintColor.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, FlintSpace.s1)
+        List {
+            ForEach(flattened(vault.tree?.children ?? [], depth: 0), id: \.node.id) { item in
+                row(item.node, depth: item.depth)
+                    .listRowBackground(rowBackground(item.node))
+                    .listRowSeparator(.hidden)
             }
-            .buttonStyle(.plain)
-            .listRowBackground(
-                ZStack(alignment: .leading) {
-                    if isSelected {
-                        FlintColor.surfaceRaised
-                        FlintColor.accent.frame(width: 2)   // "you are here" spark
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(FlintColor.surface)
+    }
+
+    private func flattened(_ nodes: [VaultNode], depth: Int) -> [(node: VaultNode, depth: Int)] {
+        var rows: [(VaultNode, Int)] = []
+        for node in nodes {
+            rows.append((node, depth))
+            if node.isDirectory, expanded.contains(node.url), let kids = node.children {
+                rows.append(contentsOf: flattened(kids, depth: depth + 1))
+            }
+        }
+        return rows
+    }
+
+    private func row(_ node: VaultNode, depth: Int) -> some View {
+        Button {
+            if node.isDirectory {
+                withAnimation(.easeOut(duration: FlintMotion.fast)) { toggle(node.url) }
+            } else {
+                onSelectNote?()
+                Task { await vault.open(node) }
+            }
+        } label: {
+            HStack(spacing: FlintSpace.s2) {
+                Group {
+                    if node.isDirectory {
+                        Image(systemName: expanded.contains(node.url) ? "chevron.down" : "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(FlintColor.textMuted)
+                    } else {
+                        Color.clear
                     }
                 }
-            )
+                .frame(width: 10)
+
+                Image(systemName: node.isDirectory ? "folder" : "doc.text")
+                    .foregroundStyle(FlintColor.textSecondary)
+                    .frame(width: 20)
+
+                Text(node.name)
+                    .foregroundStyle(isSelected(node) ? FlintColor.textPrimary : FlintColor.textSecondary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, CGFloat(depth) * FlintSpace.s4)
+            .padding(.vertical, FlintSpace.s2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toggle(_ url: URL) {
+        if expanded.contains(url) { expanded.remove(url) } else { expanded.insert(url) }
+    }
+
+    private func isSelected(_ node: VaultNode) -> Bool {
+        !node.isDirectory && node.id == vault.selection?.id
+    }
+
+    @ViewBuilder
+    private func rowBackground(_ node: VaultNode) -> some View {
+        if isSelected(node) {
+            ZStack(alignment: .leading) {
+                FlintColor.surfaceRaised
+                FlintColor.accent.frame(width: 2)   // "you are here" spark
+            }
+        } else {
+            Color.clear
         }
     }
 }
