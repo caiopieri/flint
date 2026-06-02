@@ -1,0 +1,130 @@
+# Flint — Decision Log
+
+Architecture Decision Records. Each entry: context, decision, rationale, and rejected alternatives. **Rejected alternatives are recorded so they are not silently reintroduced.**
+
+---
+
+## ADR-001 — `.md` files are the source of truth; SQLite is a disposable index
+
+**Context.** The v0.1 PRD listed both "local `.md` vault" and "Core Data / SQLite" as the store, without resolving which is canonical.
+
+**Decision.** Plain `.md` files in the vault directory are canonical. SQLite (FTS5) is a **derived, disposable** search index, rebuildable from the files.
+
+**Rationale.** The product's premise is "replace Obsidian, privacy-first, plain files." A DB-as-truth model makes the vault an opaque `.sqlite`, breaking Obsidian/git interop and the privacy story.
+
+**Rejected.** Core Data / SQLite as the authoritative store (Notion model). Killed: it contradicts files-as-truth and interop.
+
+---
+
+## ADR-002 — No CRDT in the base app; conflicts via 3-way merge + `.conflict`
+
+**Context.** v0.1 specified Yjs CRDT for sync, justified as "the same tech Notion and Linear use."
+
+**Decision.** The base app is single-user multi-device. Offline↔offline conflicts are handled by 3-way merge, falling back to a `.conflict` file. **No CRDT in Phase 1-2.**
+
+**Rationale.** CRDT solves real-time multi-person collaboration — a requirement Flint does not have. It also pulls the sync engine into a JS/webview runtime. The justification was factually wrong: Notion is server-authoritative; Linear uses a custom sync engine; both are multi-person products.
+
+**Rejected.** Yjs CRDT as the Phase 1-2 sync mechanism. CRDT is allowed **only** inside the optional future replication hub (ADR-003).
+
+---
+
+## ADR-003 — Sync: one model (files-as-truth), two transports behind `SyncProvider`
+
+**Context.** Need cross-device sync now, and an optional "real-time like Notion" mode later, without breaking files-as-truth or the no-server promise.
+
+**Decision.** All disk access goes through a `SyncProvider` protocol.
+- `iCloudDriveProvider` (default, Phase 1): zero-server, file-level iCloud Drive sync.
+- `ServerProvider` (optional, future): a **dumb replication hub** (Obsidian Self-hosted LiveSync / CouchDB model). Server only relays; files stay canonical per device. Hub = user's PC / user's VPS / our paid VPS (far future).
+
+**Rationale.** The author's desired "real-time sync" is the LiveSync hub model, **not** Notion's server-as-truth. Files stay the truth; the server is a relay. This preserves both pillars. The abstraction costs ~nothing now and avoids scattering `FileManager` calls.
+
+**Rejected.** Server-as-truth ("Notion mode") as a per-note toggle — it's a different consistency model and a different product mode, not a switch.
+
+---
+
+## ADR-004 — The WKWebView is only for editor + plugin runtime; sync and AI are native
+
+**Context.** v0.1 put `editor/`, `sync/`, and `ai/` together in a shared TypeScript "core" (for eventual Electron reuse).
+
+**Decision.** Only the editor (CodeMirror) and the plugin runtime live in the webview. **Sync and AI are native Swift.**
+
+**Rationale.** Files-as-truth + iCloud is native iOS API (`FileManager`/`NSFileCoordinator`). llama.cpp/MLX are native binaries. Putting either in JS forces a webview↔native bridge for no benefit — fragile and slow. The only legitimate reason for the webview is the editor and JS plugins.
+
+**Rejected.** A shared TS core containing sync/AI logic.
+
+---
+
+## ADR-005 — CodeMirror 6 in WKWebView is correct *because* plugins are core
+
+**Context.** A fully-webview editor sacrifices native feel; a native (TextKit 2) editor avoids the PencilKit seam but loses the JS plugin ecosystem.
+
+**Decision.** Use CodeMirror 6 in a WKWebView.
+
+**Rationale.** Community plugins are central to the product, and that ecosystem is JS (Obsidian proved it). The webview is the right substrate for editor + plugins — a deliberate architectural choice, not laziness. The cost (Ink/PencilKit compositing seam) is deferred by ADR-007.
+
+**Rejected.** A native TextKit-2 editor — loses the plugin story.
+
+---
+
+## ADR-006 — Plugins are the spine; the Plugin API is extracted, not designed up front
+
+**Context.** v0.1 placed the plugin system in Phase 4, yet Ink (Phase 2) is itself a plugin.
+
+**Decision.** Ink, Board, Flows are first-party plugins. Build a monolithic core first **without** a public Plugin API, design the bridge boundary from day 1, and **extract** the API once 2-3 first-party features consume it. Order: make it work → make it right → make it pluggable.
+
+**Rationale.** Designing a plugin API in a vacuum (no real consumer) is the #1 cause of plugin-API rot. The first plugin dev is the author; the API is validated by real use.
+
+**Rejected.** Plugin system as the final phase; freezing a public API before first-party consumers exist.
+
+---
+
+## ADR-007 — Plugin tiers + capability security; Obsidian "familiarity," not compatibility
+
+**Context.** "Sandbox" plugins that can't read the vault are useless; full-trust plugins (Obsidian model) can exfiltrate notes. Also: "plugins like Obsidian" is ambiguous between *familiar* and *binary-compatible*.
+
+**Decision.**
+- Two tiers: **web plugins** (JS, isolated webview, call native via bridge) and **native capabilities** (Swift; web plugins drive but don't implement).
+- **Capability model:** manifest perms (`storage:read/write`, `ai`, `network`, `pencil`, `ui`), granted at install, enforced at the bridge. **`network` denied by default**, loud per-plugin grant.
+- **Strategy "B′":** own clean API modeled on Obsidian's *conceptual shape*; simple plugins port by adaptation. **Not binary-compatible.** Market as "familiar," never "compatible."
+
+**Rationale.** The bridge is already a chokepoint, so capabilities are nearly free and fit privacy-first. Binary Obsidian compat is a trap — their API is huge, Electron/DOM-bound, mobile-hostile, and a moving target. The draw for devs is native capabilities Obsidian can't offer.
+
+**Rejected.** Obsidian-style full-trust plugins; binary Obsidian-plugin compatibility.
+
+**Open.** Isolation strategy — N webviews vs shared webview + realms/workers (memory vs isolation trade-off on mobile).
+
+---
+
+## ADR-008 — Three spatial surfaces over one canvas engine; Ink MVP is a separate embedded page
+
+**Context.** "Canvas" conflated three different things: handwriting, a note-linking map, and an executable workflow graph.
+
+**Decision.** One low-level canvas engine (viewport/pan/zoom/selection/edges) + three node-type packages: **Ink** (strokes), **Board** (note cards, **JSON Canvas** format), **Flows** (compute nodes, executable). **Ink MVP is a separate embedded page** (`![[sketch.ink]]`), not inline-in-text.
+
+**Rationale.** The three share only `(x, y)`; their node semantics differ wildly — one god-component would be bad at all three. Board on JSON Canvas keeps Obsidian interop. Embedding Ink as its own file avoids the native-canvas-over-webview compositing seam (the hardest part) and honors files-as-truth (the drawing is its own file). PencilKit gives palm rejection/latency/tools for free, so a basic canvas is little code; the real risk is scope creep — MVP Ink = one page, save, embed, open.
+
+**Rejected.** A single unified canvas; inline Pencil-in-text compositing in the MVP; a proprietary Board format.
+
+---
+
+## ADR-009 — AI: local is light; routing is explicit; heat is not a constraint, RAM is
+
+**Context.** v0.1 promised "run a 3B model without overheating," "<5s," and "automatic local/cloud routing."
+
+**Decision.** Local on iPhone = light models only (~1–8B Q4, or a small MoE whose total fits ~8–10 GB). Heavy work routes **explicitly** via Flows to cloud or the user's VPS. Stack: llama.cpp (Metal) + evaluate MLX; **Core ML out** of the LLM path.
+
+**Rationale.** The binding limit is memory (jetsam), not heat — heat is a normal consequence and iOS already throttles/jetsams. MoE saves compute, not memory (all experts resident; routing is per-token). "Automatic" routing is impossible — you can't know task difficulty before running. Explicit routing in the Flows graph is better and simpler. (Verified the "iPhone 17 Pro Max ran a 400B model" claim: it's flash-streaming at 0.6 tok/s — a demo, not usable; 12 GB RAM ≈ 6% of the model's needs.)
+
+**Rejected.** "No overheating" as a goal; automatic local/cloud routing; Core ML for autoregressive LLMs; expecting hundreds-of-billions-parameter models to run usably on-device.
+
+---
+
+## ADR-010 — MVP = native editor + Ink, built as A → Ink
+
+**Context.** A pure native-editor MVP may not be enough to leave mature Obsidian iOS (high switch cost, low benefit — the "valley of death").
+
+**Decision.** MVP is option **B** (editor + Ink), but built as **A then Ink**, not A-vs-B. A = native files-as-truth editor over the existing iCloud vault (nav, edit, search, frontmatter/tags, dark/light, iCloud sync) — a real milestone and the fallback daily-driver. Ship as v1 only when Ink lands.
+
+**Rationale.** A is literally the first half of B, so this isn't skipping steps. The early differentiator (Ink) crosses the valley; A de-risks it (if Ink stalls, there's still a usable editor). De-risking Ink to a separate embedded page makes B ≈ A + 20-30%, not 2×.
+
+**Rejected.** Shipping a pure-editor MVP and hoping it's enough to switch; attempting full Ink (infinite canvas/brushes/layers) in the MVP.
