@@ -23,26 +23,32 @@ struct VaultNavigator: View {
 private struct RegularNavigator: View {
     let vault: VaultStore
     var chooseVault: () -> Void
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var showSidebar = true
+    private let sidebarWidth: CGFloat = 320
 
+    // A hand-rolled split instead of NavigationSplitView: the iPadOS floating
+    // sidebar injects its own toggle button that can't be reliably removed,
+    // producing a duplicate. Owning the layout gives exactly one toggle.
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarContent(vault: vault, chooseVault: chooseVault)
-                .toolbar(.hidden, for: .navigationBar)
-        } detail: {
+        HStack(spacing: 0) {
+            if showSidebar {
+                SidebarContent(vault: vault, chooseVault: chooseVault)
+                    .frame(width: sidebarWidth)
+                    .overlay(alignment: .trailing) { FlintColor.border.frame(width: 1) }
+                    .transition(.move(edge: .leading))
+            }
             NavigationStack {
                 NoteDetail(vault: vault)
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button("Toggle Sidebar", systemImage: "sidebar.leading") {
-                                withAnimation {
-                                    columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
-                                }
+                                withAnimation(.easeOut(duration: FlintMotion.base)) { showSidebar.toggle() }
                             }
                         }
                     }
             }
         }
+        .background(FlintColor.surface)
     }
 }
 
