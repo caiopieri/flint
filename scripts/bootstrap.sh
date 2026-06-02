@@ -12,6 +12,9 @@ fi
 
 "$SCRIPT_DIR/build-web.sh"
 
+echo "[bootstrap] generating design tokens…"
+node "$SCRIPT_DIR/gen-tokens.mjs"
+
 echo "[bootstrap] generating Xcode project…"
 cd "$ROOT/ios"
 xcodegen generate

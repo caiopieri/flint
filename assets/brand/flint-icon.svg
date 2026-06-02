@@ -1,0 +1,23 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="115" fill="#1A1917"/>
+
+  <!-- Flint stone -->
+  <polygon points="256,80 374,140 388,228 350,308 272,328 196,296 188,212 212,128" fill="#444441"/>
+  <!-- highlight facet top -->
+  <polygon points="256,80 374,140 348,172 262,148" fill="#5F5E5A"/>
+  <!-- mid facet -->
+  <polygon points="348,172 374,140 388,228 364,222" fill="#2C2C2A"/>
+  <!-- edge lines -->
+  <polygon points="256,80 374,140 388,228 350,308 272,328 196,296 188,212 212,128" fill="none" stroke="#888780" stroke-width="2"/>
+
+  <!-- Sparks -->
+  <line x1="382" y1="136" x2="422" y2="98" stroke="#EF9F27" stroke-width="6" stroke-linecap="round"/>
+  <line x1="390" y1="158" x2="436" y2="138" stroke="#EF9F27" stroke-width="5" stroke-linecap="round"/>
+  <line x1="387" y1="180" x2="428" y2="172" stroke="#EF9F27" stroke-width="4" stroke-linecap="round"/>
+  <line x1="394" y1="118" x2="412" y2="88" stroke="#FAC775" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+
+  <!-- Spark dots -->
+  <circle cx="426" cy="94" r="5" fill="#EF9F27"/>
+  <circle cx="440" cy="136" r="4" fill="#FAC775" opacity="0.8"/>
+  <circle cx="432" cy="170" r="3" fill="#EF9F27" opacity="0.7"/>
+</svg>

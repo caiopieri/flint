@@ -142,3 +142,59 @@ Architecture Decision Records. Each entry: context, decision, rationale, and rej
 **Rejected.** A Flint-owned iCloud/CloudKit container as the vault home (can't open existing vaults; silos the user's notes); assuming the vault is always in iCloud.
 
 **Implication.** The `Vault` module starts from a bookmark, not a fixed path. Handle bookmark staleness/re-resolution and the `startAccessingSecurityScopedResource` lifecycle.
+
+---
+
+# Design ADRs
+
+Decisions about the visual/interaction system. Full system in [`design/`](./design/). Same format: context, decision, rationale, rejected alternatives.
+
+---
+
+## ADR-D01 — The design system is derived from the app icon
+
+**Context.** The repo had zero design consolidation — no colors, type, or styles — while an app icon already existed (`assets/brand/flint-icon.svg`), made by the author.
+
+**Decision.** Derive the entire system from the icon: warm near-black field, a warm-gray faceted stone, and a rare amber spark. Concretely → warm-neutral ramp (no cold/blue gray), a single amber accent used sparingly, hierarchy by surface plane + hairline (not shadow), dark-first.
+
+**Rationale.** The icon is already a coherent, opinionated statement; deriving from it guarantees the product and its mark agree, and avoids inventing an unrelated palette. It also matches the product ethos (calm, content-first tool — not a flashy site).
+
+**Rejected.** A generic SaaS/Material palette; importing the aesthetics of the installed web-design skills (`taste-skill`, `brutalist`, etc.) — those are landing-page skills, wrong for a native long-form tool.
+
+---
+
+## ADR-D02 — Amber is the accent, but accent *text* darkens in light mode
+
+**Context.** The icon's amber `#EF9F27` is the brand spark, beautiful on dark. But it only reaches ~2.2:1 on white — failing WCAG AA for text.
+
+**Decision.** Keep `#EF9F27` for fills/icons/cursor in both modes. For amber **text/links in light mode**, use the darkened `spark.800` (`#9A6206`, ~5.1:1). This is the one place the palette diverges by mode (`accent` vs `accent-text`).
+
+**Rationale.** Preserves the brand spark where contrast rules are lenient (non-text) while meeting AA where they aren't (text). Honesty about contrast is required for a reading app (see `design/ACCESSIBILITY.md`).
+
+**Rejected.** Using `#EF9F27` for light-mode link text (fails AA); abandoning amber text entirely (loses the brand cue).
+
+---
+
+## ADR-D03 — tokens-as-truth: one JSON generates both Swift and CSS
+
+**Context.** Flint's UI spans two render engines — SwiftUI chrome and CodeMirror inside a WKWebView — meeting at a visible seam. Maintaining color/type/spacing separately in Swift and CSS guarantees drift, and a mismatched seam.
+
+**Decision.** A single source of truth, `docs/design/tokens/tokens.json`, is compiled by `scripts/gen-tokens.mjs` into `ios/Flint/App/Tokens.swift` and `web/src/tokens.css`. The two generated files are **gitignored** (rebuildable, like `Info.plist`/`.xcodeproj`/the web bundle). No color or size is ever defined on only one side.
+
+**Rationale.** Mirrors the repo's files-as-truth discipline: one canonical artifact, disposable generated indexes. It is the structural enforcement of "one look across two engines" (`design/PRINCIPLES.md §7`) — parity by construction, not by vigilance.
+
+**Rejected.** Hand-maintaining parallel Swift and CSS palettes; committing the generated files (contradicts the repo's generated-files-are-ignored convention).
+
+**Implication (for implementation).** Wire `node scripts/gen-tokens.mjs` into `make bootstrap` and an Xcode pre-build phase so a fresh clone builds. Design is complete; this wiring is left to the dev.
+
+---
+
+## ADR-D04 — Native typefaces only: New York (reading) / SF Pro (UI) / SF Mono (code)
+
+**Context.** A note app's reading face is its most important type decision, and the editor lives in a webview while the chrome is native — fonts must match across the seam.
+
+**Decision.** Three Apple-native, zero-bundle families: **New York** (`.serif` / `ui-serif`) for editor reading text, **SF Pro** (system / `ui-sans-serif`) for UI chrome, **SF Mono** (`.monospaced` / `ui-monospace`) for code. Serif content + sans chrome (the iA Writer lineage).
+
+**Rationale.** `ui-serif` resolves to New York on Apple platforms, so the webview editor and native chrome render identical fonts with no webfont, no FOUT, no licensing, no bundle weight. A serif makes the editor read as a document, not a form — calm and editorial, matching the warm palette.
+
+**Rejected.** A bundled custom/Google webfont (bundle weight, licensing, seam-matching pain); an all-sans system (loses the editorial reading feel); a serif for chrome (controls should feel native).
