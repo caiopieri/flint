@@ -31,6 +31,9 @@ private struct RegularNavigator: View {
     // sidebar injects its own toggle button that can't be reliably removed
     // (duplicate), and we want the tree to float *over* a full-width note, not
     // split it. Owning the layout gives exactly one toggle and full control.
+    // The sidebar stays in the hierarchy and slides via `offset` (like the iPhone
+    // drawer) rather than being inserted/removed with a transition — that way the
+    // open *and* close are symmetric; a `.transition` here only animated the entry.
     var body: some View {
         ZStack(alignment: .leading) {
             NavigationStack {
@@ -44,22 +47,22 @@ private struct RegularNavigator: View {
                     }
             }
 
-            if showSidebar {
-                // Light scrim: the note stays visible underneath; tap to dismiss.
-                Color.black.opacity(0.12)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture { setSidebar(false) }
-                    .transition(.opacity)
+            // Light scrim: the note stays visible underneath; tap to dismiss.
+            // Fades with the sidebar and only catches taps while open.
+            Color.black.opacity(0.12)
+                .ignoresSafeArea()
+                .opacity(showSidebar ? 1 : 0)
+                .allowsHitTesting(showSidebar)
+                .contentShape(Rectangle())
+                .onTapGesture { setSidebar(false) }
 
-                SidebarContent(vault: vault, chooseVault: chooseVault, onSelectNote: { setSidebar(false) })
-                    .frame(width: sidebarWidth)
-                    .frame(maxHeight: .infinity)
-                    .background(FlintColor.surface)
-                    // Structure via a hairline border, never a shadow (design system §4).
-                    .overlay(alignment: .trailing) { FlintColor.border.frame(width: 1) }
-                    .transition(.move(edge: .leading))
-            }
+            SidebarContent(vault: vault, chooseVault: chooseVault, onSelectNote: { setSidebar(false) })
+                .frame(width: sidebarWidth)
+                .frame(maxHeight: .infinity)
+                .background(FlintColor.surface)
+                // Structure via a hairline border, never a shadow (design system §4).
+                .overlay(alignment: .trailing) { FlintColor.border.frame(width: 1) }
+                .offset(x: showSidebar ? 0 : -sidebarWidth)
         }
         .background(FlintColor.bg)
     }
