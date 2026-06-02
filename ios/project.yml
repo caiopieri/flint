@@ -1,0 +1,50 @@
+name: Flint
+options:
+  bundleIdPrefix: com.caiopieri.flint
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Flint:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Flint
+        excludes:
+          - "Resources/web/**"
+      - path: Flint/Resources/web
+        type: folder
+        buildPhase: resources
+    info:
+      path: Flint/Info.plist
+      properties:
+        CFBundleDisplayName: Flint
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.caiopieri.flint
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+    preBuildScripts:
+      - name: Build web bundle
+        basedOnDependencyAnalysis: false
+        script: |
+          "$PROJECT_DIR/../scripts/build-web.sh"

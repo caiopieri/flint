@@ -1,0 +1,2 @@
+# The built web runtime (web/dist) is copied here by scripts/build-web.sh at build
+# time and bundled into the app. The contents are generated and gitignored.
