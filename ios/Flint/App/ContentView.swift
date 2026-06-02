@@ -15,6 +15,10 @@ struct ContentView: View {
                 VaultEmptyState { isPickingFolder = true }
             }
         }
+        // Layer-2 haptics (iPhone only; no-op on iPad), per INTERACTION.md allowlist:
+        // a light tick when a note is opened, an alert tap when an error surfaces.
+        .flintHaptic(.selection, trigger: vault.selection) { $0 != nil }
+        .flintHaptic(.error, trigger: vault.errorMessage) { $0 != nil }
         .fileImporter(isPresented: $isPickingFolder, allowedContentTypes: [.folder]) { result in
             switch result {
             case .success(let url): vault.openVault(at: url)

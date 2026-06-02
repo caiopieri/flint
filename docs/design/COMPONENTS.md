@@ -55,6 +55,7 @@ Tools, not a marketing site — keep these calm.
 - **Secondary:** `surface-raised` fill, `text-primary`, `border` hairline, `radius-md`.
 - **Tertiary / icon button:** no fill; SF Symbol in `text-secondary`, → `text-primary` on press. ≥44×44pt tap target even if the glyph is smaller.
 - **Toggle/switch:** native; tinted `accent` when on.
+- **Press feedback:** every button gets a visual press state — scale **0.97** + one-step fill shift over `motion.fast` (works on iPad and in the webview). Haptics are an iPhone-only enhancement layered on top and are *never* the sole feedback — full allowlist and the iPhone/iPad/Pencil limits are in [INTERACTION.md](./INTERACTION.md).
 
 ## Theme switching  · T5.2
 
@@ -71,6 +72,7 @@ Native `PKCanvasView`. Scope-locked: one page, save, embed, open (ADR-008). No i
 - **Tool picker:** prefer the system `PKToolPicker`. If a custom bar is needed, it sits on `surface` with a `border` top hairline, icon buttons per the icon-button spec, the active tool marked with an `accent` indicator.
 - **Chrome:** minimal top bar — back/done (`text-primary`), template switcher, undo/redo. `surface` background, `border` hairline. The canvas itself is edge-to-edge and crisp (§6).
 - **States:** drawing, idle, saving (a quiet `text-muted` indicator — never a blocking spinner for a local save).
+- **Haptics:** this is the *only* surface where iPad tactile feedback exists — a snap to a template grid/line or ruler fires `UICanvasFeedbackGenerator` with Apple Pencil Pro. See [INTERACTION.md](./INTERACTION.md).
 
 ## Ink — embed thumbnail  · T7
 

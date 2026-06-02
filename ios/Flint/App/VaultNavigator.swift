@@ -180,7 +180,7 @@ private struct SidebarContent: View {
                         .foregroundStyle(FlintColor.textMuted)
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.flintPressable)
 
             Spacer(minLength: 0)
 
@@ -198,12 +198,14 @@ private struct SidebarContent: View {
             }
             .labelStyle(.iconOnly)
             .foregroundStyle(FlintColor.textSecondary)
+            .buttonStyle(.flintPressable)
 
             Button("New folder", systemImage: "folder.badge.plus") {
                 Task { await vault.createFolder() }
             }
             .labelStyle(.iconOnly)
             .foregroundStyle(FlintColor.textSecondary)
+            .buttonStyle(.flintPressable)
 
             Button("New note", systemImage: "square.and.pencil") {
                 onSelectNote?()
@@ -211,6 +213,7 @@ private struct SidebarContent: View {
             }
             .labelStyle(.iconOnly)
             .foregroundStyle(FlintColor.textSecondary)
+            .buttonStyle(.flintPressable)
         }
         .padding(.horizontal, FlintSpace.s4)
         .padding(.vertical, FlintSpace.s3)
@@ -306,7 +309,7 @@ private struct VaultTreeList: View {
             .contentShape(Rectangle())
             .background(rowBackground(node))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.flintRow(pressedFill: FlintColor.surfaceRaised))
     }
 
     private func toggle(_ url: URL) {
