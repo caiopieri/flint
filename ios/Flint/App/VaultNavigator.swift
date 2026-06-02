@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The app frame once a vault is open. Picks the right shell per width:
-/// iPad/regular → a real side-by-side NavigationSplitView; iPhone/compact → a
-/// slide-over drawer (Obsidian-style), since a fixed sidebar doesn't fit a phone.
+/// iPad/regular → side-by-side NavigationSplitView; iPhone/compact → a push
+/// drawer (the sidebar shoves the note aside, Obsidian-style — not an overlay).
 /// Spec: docs/design/COMPONENTS.md → "Navigation shell · T1".
 struct VaultNavigator: View {
     let vault: VaultStore
@@ -26,124 +26,147 @@ private struct RegularNavigator: View {
 
     var body: some View {
         NavigationSplitView {
-            VaultTree(vault: vault)
-                .navigationTitle(vault.tree?.name ?? "Vault")
-                .toolbar { vaultToolbar(vault: vault, chooseVault: chooseVault) }
+            SidebarContent(vault: vault, chooseVault: chooseVault)
+                .toolbar(.hidden, for: .navigationBar)
         } detail: {
             NoteDetail(vault: vault)
         }
     }
 }
 
-// MARK: - iPhone / compact width — slide-over drawer
+// MARK: - iPhone / compact width — push drawer
 
 private struct CompactNavigator: View {
     let vault: VaultStore
     var chooseVault: () -> Void
-
-    @State private var isDrawerOpen = false
-    private let drawerWidth: CGFloat = 320
+    @State private var isOpen = false
 
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .leading) {
-                NoteDetail(vault: vault)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        GeometryReader { geo in
+            let screenW = geo.size.width
+            let sidebarW = min(screenW * 0.82, 340)
 
-                if isDrawerOpen {
-                    Color.black.opacity(0.4)
-                        .ignoresSafeArea()
-                        .onTapGesture { setDrawer(false) }
-                        .transition(.opacity)
-                }
-
-                VaultTree(vault: vault, onSelectNote: { setDrawer(false) })
-                    .frame(width: drawerWidth, alignment: .leading)
-                    .frame(maxHeight: .infinity)
+            HStack(spacing: 0) {
+                SidebarContent(vault: vault, chooseVault: chooseVault, onSelectNote: { setOpen(false) })
+                    .frame(width: sidebarW)
                     .background(FlintColor.surface)
                     .overlay(alignment: .trailing) { FlintColor.border.frame(width: 1) }
-                    .offset(x: isDrawerOpen ? 0 : -(drawerWidth + 1))
-                    .gesture(
-                        DragGesture(minimumDistance: 20)
-                            .onEnded { if $0.translation.width < -40 { setDrawer(false) } }
-                    )
-            }
-            // Thin leading strip to swipe the drawer open.
-            .overlay(alignment: .leading) {
-                if !isDrawerOpen {
-                    Color.clear
-                        .frame(width: 16)
-                        .frame(maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 20)
-                                .onEnded { if $0.translation.width > 40 { setDrawer(true) } }
-                        )
+
+                ZStack {
+                    NavigationStack {
+                        NoteDetail(vault: vault)
+                            .toolbar {
+                                ToolbarItem(placement: .topBarLeading) {
+                                    Button("Files", systemImage: "sidebar.leading") { setOpen(!isOpen) }
+                                }
+                            }
+                            .navigationBarTitleDisplayMode(.inline)
+                    }
+                    // Tap/drag the pushed-aside note to dismiss the drawer
+                    // (no dimming — the sidebar pushes, it doesn't overlay).
+                    if isOpen {
+                        Color.clear
+                            .ignoresSafeArea()
+                            .contentShape(Rectangle())
+                            .onTapGesture { setOpen(false) }
+                            .gesture(
+                                DragGesture(minimumDistance: 20)
+                                    .onEnded { if $0.translation.width < -40 { setOpen(false) } }
+                            )
+                    }
+                }
+                .frame(width: screenW)
+                // Edge-swipe from the leading edge to open.
+                .overlay(alignment: .leading) {
+                    if !isOpen {
+                        Color.clear
+                            .frame(width: 16)
+                            .frame(maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 20)
+                                    .onEnded { if $0.translation.width > 40 { setOpen(true) } }
+                            )
+                    }
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Files", systemImage: "sidebar.leading") { setDrawer(!isDrawerOpen) }
-                }
-                vaultToolbar(vault: vault, chooseVault: chooseVault)
-            }
-            .navigationBarTitleDisplayMode(.inline)
+            .frame(width: sidebarW + screenW, alignment: .leading)
+            .offset(x: isOpen ? 0 : -sidebarW)
         }
-        .onAppear { if vault.selection == nil { isDrawerOpen = true } }
+        .background(FlintColor.surface.ignoresSafeArea())
+        .onAppear { if vault.selection == nil { isOpen = true } }
     }
 
-    private func setDrawer(_ open: Bool) {
-        withAnimation(.easeOut(duration: FlintMotion.base)) { isDrawerOpen = open }
+    private func setOpen(_ open: Bool) {
+        withAnimation(.easeOut(duration: FlintMotion.base)) { isOpen = open }
     }
 }
 
-// MARK: - Shared toolbar
+// MARK: - Sidebar content (shared by both shells)
 
-@ToolbarContentBuilder
-private func vaultToolbar(vault: VaultStore, chooseVault: @escaping () -> Void) -> some ToolbarContent {
-    ToolbarItem(placement: .primaryAction) {
-        Button("New note", systemImage: "square.and.pencil") {
-            Task { await vault.createNote() }
-        }
-    }
-    ToolbarItem(placement: .primaryAction) {
-        Menu {
-            Button("Change vault folder…", systemImage: "folder", action: chooseVault)
-            Button("Reload", systemImage: "arrow.clockwise") {
-                Task { await vault.reload() }
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-        }
-    }
-}
-
-// MARK: - The tree (shared by both shells)
-
-private struct VaultTree: View {
+/// The vault name (tap to switch vault) + a new-note button, over the file tree.
+private struct SidebarContent: View {
     let vault: VaultStore
-    /// Called after a note is opened, so the compact drawer can close itself.
+    var chooseVault: () -> Void
+    /// Lets the compact drawer close itself when a note is opened/created.
     var onSelectNote: (() -> Void)? = nil
 
-    private var isEmpty: Bool { vault.tree?.children?.isEmpty ?? true }
-
     var body: some View {
-        if isEmpty {
-            ZStack {
-                FlintColor.surface.ignoresSafeArea()
-                ContentUnavailableView {
-                    Label("No notes yet", systemImage: "doc.text")
-                } description: {
-                    Text("This folder has no Markdown notes.")
-                } actions: {
-                    Button("New note") {
-                        onSelectNote?()
-                        Task { await vault.createNote() }
-                    }
-                    .buttonStyle(.flintPrimary)
-                    .frame(maxWidth: 240)
+        VStack(spacing: 0) {
+            header
+            FlintColor.border.frame(height: 1)
+            tree
+        }
+        .background(FlintColor.surface)
+    }
+
+    private var header: some View {
+        HStack(spacing: FlintSpace.s2) {
+            Menu {
+                Button("Open another vault…", systemImage: "folder", action: chooseVault)
+                // TODO: recent vaults + create vault live here.
+            } label: {
+                HStack(spacing: FlintSpace.s1) {
+                    Text(vault.tree?.name ?? "Vault")
+                        .font(.headline)
+                        .foregroundStyle(FlintColor.textPrimary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(FlintColor.textMuted)
                 }
             }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 0)
+
+            Button("New note", systemImage: "square.and.pencil") {
+                onSelectNote?()
+                Task { await vault.createNote() }
+            }
+            .labelStyle(.iconOnly)
+            .foregroundStyle(FlintColor.textSecondary)
+        }
+        .padding(.horizontal, FlintSpace.s4)
+        .padding(.vertical, FlintSpace.s3)
+    }
+
+    @ViewBuilder
+    private var tree: some View {
+        if vault.tree?.children?.isEmpty ?? true {
+            ContentUnavailableView {
+                Label("No notes yet", systemImage: "doc.text")
+            } description: {
+                Text("This folder has no Markdown notes.")
+            } actions: {
+                Button("New note") {
+                    onSelectNote?()
+                    Task { await vault.createNote() }
+                }
+                .buttonStyle(.flintPrimary)
+                .frame(maxWidth: 240)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
                 if let children = vault.tree?.children {
@@ -195,7 +218,8 @@ private struct VaultRow: View {
 }
 
 /// T1 shows the raw `.md` text (read-only). The CodeMirror editor replaces this
-/// in T3; for now this proves coordinated reads work end-to-end.
+/// in T3; for now this proves coordinated reads work end-to-end. The nav bar
+/// shows the open note's name, or nothing when none is selected.
 private struct NoteDetail: View {
     let vault: VaultStore
 
@@ -223,8 +247,6 @@ private struct NoteDetail: View {
                     FlintColor.bg.ignoresSafeArea()
                     ContentUnavailableView("Select a note", systemImage: "doc.text")
                 }
-                .navigationTitle(vault.tree?.name ?? "Vault")
-                .navigationBarTitleDisplayMode(.inline)
             }
         }
     }
