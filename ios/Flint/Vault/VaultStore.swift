@@ -145,6 +145,29 @@ final class VaultStore {
         }
     }
 
+    /// Create a new note at the vault root, then select and open it.
+    func createNote() async {
+        guard let root = rootURL else { return }
+        do {
+            let url = try await Task.detached(priority: .userInitiated) {
+                try VaultFileSystem.createNote(in: root)
+            }.value
+            await reload()
+            if let node = findNode(url, in: tree) { await open(node) }
+        } catch {
+            errorMessage = "Couldn't create a note: \(error.localizedDescription)"
+        }
+    }
+
+    private func findNode(_ url: URL, in node: VaultNode?) -> VaultNode? {
+        guard let node else { return nil }
+        if node.url == url { return node }
+        for child in node.children ?? [] {
+            if let found = findNode(url, in: child) { return found }
+        }
+        return nil
+    }
+
     // MARK: - External-change watching (NSFilePresenter)
 
     private func startWatching(_ url: URL) {

@@ -12,6 +12,11 @@ struct VaultNavigator: View {
                 .navigationTitle(vault.tree?.name ?? "Vault")
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
+                        Button("New note", systemImage: "square.and.pencil") {
+                            Task { await vault.createNote() }
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Button("Change vault folder…", systemImage: "folder", action: chooseVault)
                             Button("Reload", systemImage: "arrow.clockwise") {
@@ -27,21 +32,38 @@ struct VaultNavigator: View {
         }
     }
 
+    private var isEmptyVault: Bool { vault.tree?.children?.isEmpty ?? true }
+
     @ViewBuilder
     private var sidebar: some View {
-        List {
-            if let children = vault.tree?.children {
-                OutlineGroup(children, children: \.children) { node in
-                    VaultRow(node: node, isSelected: node.id == vault.selection?.id) {
-                        Task { await vault.open(node) }
-                    }
-                    .listRowBackground(Color.clear)
+        if isEmptyVault {
+            ZStack {
+                FlintColor.surface.ignoresSafeArea()
+                ContentUnavailableView {
+                    Label("No notes yet", systemImage: "doc.text")
+                } description: {
+                    Text("This folder has no Markdown notes.")
+                } actions: {
+                    Button("New note") { Task { await vault.createNote() } }
+                        .buttonStyle(.flintPrimary)
+                        .frame(maxWidth: 240)
                 }
             }
+        } else {
+            List {
+                if let children = vault.tree?.children {
+                    OutlineGroup(children, children: \.children) { node in
+                        VaultRow(node: node, isSelected: node.id == vault.selection?.id) {
+                            Task { await vault.open(node) }
+                        }
+                        .listRowBackground(Color.clear)
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(FlintColor.surface)
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .background(FlintColor.surface)
     }
 }
 

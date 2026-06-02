@@ -32,17 +32,9 @@ struct VaultEmptyState: View {
                 }
 
                 // Primary button — the one amber spark on screen (§3).
-                Button(action: chooseVault) {
-                    Text("Choose vault folder")
-                        .font(.headline)
-                        .foregroundStyle(FlintColor.textOnAccent)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(
-                            FlintColor.accent,
-                            in: RoundedRectangle(cornerRadius: FlintRadius.md, style: .continuous)
-                        )
-                }
-                .frame(maxWidth: 300)
+                Button("Choose vault folder", action: chooseVault)
+                    .buttonStyle(.flintPrimary)
+                    .frame(maxWidth: 300)
             }
             .padding(FlintSpace.s6)
         }

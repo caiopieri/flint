@@ -33,6 +33,20 @@ enum VaultFileSystem {
         try coordinatedRead(url) { try String(contentsOf: $0, encoding: .utf8) }
     }
 
+    /// Create a new empty `.md` note in `directory`, picking a non-colliding name
+    /// ("Untitled.md", "Untitled 1.md", …). Returns the created file's URL.
+    static func createNote(in directory: URL, baseName: String = "Untitled") throws -> URL {
+        let fileManager = FileManager.default
+        var candidate = directory.appendingPathComponent("\(baseName).md")
+        var counter = 1
+        while fileManager.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(baseName) \(counter).md")
+            counter += 1
+        }
+        try writeNote("", to: candidate)
+        return candidate
+    }
+
     /// Coordinated, atomic write-back of a note's text. (Wired by the editor in T3.)
     static func writeNote(_ text: String, to url: URL) throws {
         let coordinator = NSFileCoordinator()
