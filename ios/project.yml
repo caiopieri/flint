@@ -44,6 +44,15 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
     preBuildScripts:
+      - name: Generate design tokens
+        basedOnDependencyAnalysis: false
+        script: |
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          if command -v node >/dev/null 2>&1; then
+            node "$PROJECT_DIR/../scripts/gen-tokens.mjs"
+          else
+            echo "warning: node not found — keeping existing Tokens.swift/tokens.css" >&2
+          fi
       - name: Build web bundle
         basedOnDependencyAnalysis: false
         script: |

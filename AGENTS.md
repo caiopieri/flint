@@ -2,7 +2,7 @@
 
 Flint is an open-source iOS/iPadOS note app: the depth of Obsidian (Markdown, local vault, plugins), native Apple Pencil handwriting, and local/cloud AI — privacy-first, local-first.
 
-This file is the entry point for any agent or contributor. **Read next:** `docs/ARCHITECTURE.md` (how it's built) and `docs/DECISIONS.md` (why, and what NOT to reintroduce).
+This file is the entry point for any agent or contributor. **Read next:** `docs/ARCHITECTURE.md` (how it's built) and `docs/DECISIONS.md` (why, and what NOT to reintroduce). For anything visual, `docs/design/` is the design system (start at `docs/design/README.md`).
 
 ---
 
