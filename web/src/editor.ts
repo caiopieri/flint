@@ -10,6 +10,8 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
+import { GFM } from "@lezer/markdown";
+import { livePreview } from "./livePreview";
 
 const flintTheme = EditorView.theme({
   "&": {
@@ -72,8 +74,10 @@ export function createEditor(parent: HTMLElement, onChange: (text: string) => vo
         drawSelection(),
         EditorView.lineWrapping,
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-        markdown(),
+        // GFM gives us task lists / strikethrough nodes for Live Preview.
+        markdown({ extensions: GFM }),
         syntaxHighlighting(flintHighlight),
+        livePreview(),
         flintTheme,
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applying) onChange(view.state.doc.toString());
