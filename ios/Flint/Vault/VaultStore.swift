@@ -13,9 +13,17 @@ final class VaultStore {
     private(set) var rootURL: URL?
     private(set) var tree: VaultNode?
     private(set) var selection: VaultNode?
-    private(set) var noteText: String?
     private(set) var recents: [RecentVaultRef] = []
     var errorMessage: String?
+
+    /// The selected note's path relative to the vault root — what the editor
+    /// loads/saves over the bridge. `nil` when nothing (or a folder) is selected.
+    /// Paths cross the bridge relative, never absolute (keeps the filesystem
+    /// layout out of the webview; aligns with the future plugin capability model).
+    var selectedRelativePath: String? {
+        guard let root = rootURL, let selection, !selection.isDirectory else { return nil }
+        return Self.relativePath(of: selection.url, under: root)
+    }
 
     /// How the file tree is ordered. Persisted; applied at display time so
     /// switching is instant (no disk reload). Folders always come before files.
@@ -92,7 +100,6 @@ final class VaultStore {
         if let data = saveBookmark(for: url) { addRecent(data, url: url) }
         beginAccess(to: url)
         selection = nil
-        noteText = nil
         scheduleReload()
     }
 
@@ -117,7 +124,6 @@ final class VaultStore {
             addRecent(ref.bookmark, url: url)   // promote to front
         }
         selection = nil
-        noteText = nil
         scheduleReload()
     }
 
@@ -231,13 +237,13 @@ final class VaultStore {
             let newTree = try await provider.list()
             tree = newTree
             errorMessage = nil
-            if let selection {
-                if findNode(selection.url, in: newTree) != nil {
-                    await open(selection)
-                } else {
-                    self.selection = nil
-                    self.noteText = nil
-                }
+            // Keep the open note selected if it still exists. We deliberately do
+            // NOT re-read it here: the editor owns the live buffer, and clobbering
+            // it on an external refresh would drop the user's unsaved edits. A
+            // truly divergent external change surfaces via the conflict path (T2)
+            // on the next load.
+            if let selection, findNode(selection.url, in: newTree) == nil {
+                self.selection = nil
             }
         } catch {
             errorMessage = "Couldn't read the vault: \(error.localizedDescription)"
@@ -246,15 +252,23 @@ final class VaultStore {
 
     // MARK: - Opening / creating notes
 
-    func open(_ node: VaultNode) async {
-        guard !node.isDirectory, let provider else { return }
+    /// Select a note. The editor reacts to `selectedRelativePath` and pulls the
+    /// text over the bridge (`doc.load`); the store no longer reads it eagerly.
+    func open(_ node: VaultNode) {
+        guard !node.isDirectory else { return }
         selection = node
-        do {
-            noteText = try await provider.read(node.url)
-        } catch {
-            noteText = nil
-            errorMessage = "Couldn't open \(node.name): \(error.localizedDescription)"
-        }
+    }
+
+    /// Load a note's text for the editor (bridge `doc.load`). Path is vault-relative.
+    func editorLoad(_ relativePath: String) async throws -> String {
+        guard let provider, let url = resolve(relativePath) else { throw VaultStoreError.noVault }
+        return try await provider.read(url)
+    }
+
+    /// Persist a note's text from the editor (bridge `doc.save`). Path is vault-relative.
+    func editorSave(_ relativePath: String, _ text: String) async throws {
+        guard let provider, let url = resolve(relativePath) else { throw VaultStoreError.noVault }
+        try await provider.write(text, to: url)
     }
 
     /// Create a new note at the vault root, then select and open it.
@@ -263,7 +277,7 @@ final class VaultStore {
         do {
             let url = try await provider.createNote(in: root, baseName: "Untitled")
             await reload()
-            if let node = findNode(url, in: tree) { await open(node) }
+            if let node = findNode(url, in: tree) { open(node) }
         } catch {
             errorMessage = "Couldn't create a note: \(error.localizedDescription)"
         }
@@ -287,5 +301,27 @@ final class VaultStore {
             if let found = findNode(url, in: child) { return found }
         }
         return nil
+    }
+
+    // MARK: - Vault-relative path mapping (bridge <-> disk)
+
+    /// Resolve a vault-relative path (from the editor) to an absolute URL.
+    private func resolve(_ relativePath: String) -> URL? {
+        rootURL?.appendingPathComponent(relativePath)
+    }
+
+    /// A file's path relative to the vault root, used as its bridge identity.
+    static func relativePath(of url: URL, under root: URL) -> String {
+        let base = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        return url.path.hasPrefix(base) ? String(url.path.dropFirst(base.count)) : url.lastPathComponent
+    }
+}
+
+enum VaultStoreError: LocalizedError {
+    case noVault
+    var errorDescription: String? {
+        switch self {
+        case .noVault: return "No vault is open."
+        }
     }
 }
