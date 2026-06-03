@@ -348,31 +348,20 @@ private struct VaultTreeList: View {
     }
 }
 
-/// T1 shows the raw `.md` text (read-only). The CodeMirror editor replaces this
-/// in T3; for now this proves coordinated reads work end-to-end. The nav bar
-/// shows the open note's name, or nothing when none is selected.
+/// The detail pane hosts the editor's WKWebView (EditorHost). T3.1 loads a
+/// placeholder runtime that proves the flint:// scheme + bridge round-trip;
+/// CodeMirror and doc load/save arrive in T3.2. The nav bar shows the open
+/// note's name, or the empty state when none is selected.
 private struct NoteDetail: View {
     let vault: VaultStore
 
     var body: some View {
         Group {
-            if let text = vault.noteText, let selection = vault.selection {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: FlintSpace.s3) {
-                        Text("Read-only preview — the editor arrives in T3.")
-                            .font(.caption)
-                            .foregroundStyle(FlintColor.textMuted)
-                        Text(text)
-                            .font(FlintFont.readingBase)
-                            .foregroundStyle(FlintColor.textPrimary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding(FlintSpace.s5)
-                }
-                .background(FlintColor.bg)
-                .navigationTitle(selection.name)
-                .navigationBarTitleDisplayMode(.inline)
+            if let selection = vault.selection {
+                EditorWebView()
+                    .background(FlintColor.bg)
+                    .navigationTitle(selection.name)
+                    .navigationBarTitleDisplayMode(.inline)
             } else {
                 ZStack {
                     FlintColor.bg.ignoresSafeArea()
