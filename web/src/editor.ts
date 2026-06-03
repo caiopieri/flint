@@ -11,7 +11,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { GFM } from "@lezer/markdown";
-import { livePreview } from "./livePreview";
+import { livePreview, flintMarkdownExtensions } from "./livePreview";
 
 const flintTheme = EditorView.theme({
   "&": {
@@ -74,8 +74,9 @@ export function createEditor(parent: HTMLElement, onChange: (text: string) => vo
         drawSelection(),
         EditorView.lineWrapping,
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-        // GFM gives us task lists / strikethrough nodes for Live Preview.
-        markdown({ extensions: GFM }),
+        // GFM gives task lists / strikethrough; flintMarkdownExtensions add
+        // [[wikilinks]], ==highlight==, and #tags for Live Preview.
+        markdown({ extensions: [GFM, ...flintMarkdownExtensions] }),
         syntaxHighlighting(flintHighlight),
         livePreview(),
         flintTheme,

@@ -30,9 +30,85 @@ import {
 } from "@codemirror/view";
 import type { Range } from "@codemirror/state";
 import type { SyntaxNode } from "@lezer/common";
+import type { InlineContext, MarkdownConfig } from "@lezer/markdown";
 
 // A zero-config replace decoration that simply hides the range it covers.
 const hide = Decoration.replace({});
+
+// --- Custom Markdown syntax the base parser + GFM don't cover -----------------
+// Obsidian-isms: [[wikilinks]], ==highlight==, and #tags. Each is a tiny inline
+// parser producing nodes the decoration pass below conceals/styles like the rest.
+
+/** A paired inline delimiter (==x==, [[x]]) → node + two *Mark children. */
+function pairedInline(node: string, openLen: number, openCh: number, closeCh: number) {
+  return {
+    name: node,
+    before: "Link",
+    parse(cx: InlineContext, next: number, pos: number): number {
+      if (next !== openCh || cx.char(pos + 1) !== openCh) return -1;
+      for (let i = pos + openLen; i < cx.end; i++) {
+        if (cx.char(i) === 10) return -1; // never span a line
+        if (cx.char(i) === closeCh && cx.char(i + 1) === closeCh) {
+          const end = i + openLen;
+          return cx.addElement(
+            cx.elt(node, pos, end, [
+              cx.elt(`${node}Mark`, pos, pos + openLen),
+              cx.elt(`${node}Mark`, i, end),
+            ]),
+          );
+        }
+      }
+      return -1;
+    },
+  };
+}
+
+const WikiLink: MarkdownConfig = {
+  defineNodes: ["WikiLink", "WikiLinkMark"],
+  parseInline: [pairedInline("WikiLink", 2, 91 /* [ */, 93 /* ] */)],
+};
+
+const Highlight: MarkdownConfig = {
+  defineNodes: ["Highlight", "HighlightMark"],
+  parseInline: [pairedInline("Highlight", 2, 61 /* = */, 61 /* = */)],
+};
+
+function isTagBody(c: number): boolean {
+  return (
+    (c >= 48 && c <= 57) || // 0-9
+    (c >= 65 && c <= 90) || // A-Z
+    (c >= 97 && c <= 122) || // a-z
+    c === 45 || // -
+    c === 95 || // _
+    c === 47 // /
+  );
+}
+
+const Tag: MarkdownConfig = {
+  defineNodes: ["FlintTag"],
+  parseInline: [
+    {
+      name: "FlintTag",
+      parse(cx: InlineContext, next: number, pos: number): number {
+        if (next !== 35 /* # */) return -1;
+        // Must follow whitespace / start, not be glued to a word (foo#bar, URLs).
+        const before = pos > cx.offset ? cx.char(pos - 1) : -1;
+        if (before >= 0 && isTagBody(before)) return -1;
+        let i = pos + 1;
+        let hasLetter = false;
+        for (; i < cx.end && isTagBody(cx.char(i)); i++) {
+          const c = cx.char(i);
+          if (!(c >= 48 && c <= 57)) hasLetter = true;
+        }
+        if (i === pos + 1 || !hasLetter) return -1; // empty or pure number
+        return cx.addElement(cx.elt("FlintTag", pos, i));
+      },
+    },
+  ],
+};
+
+/** Markdown parser extensions to merge into `markdown({ extensions })`. */
+export const flintMarkdownExtensions = [WikiLink, Highlight, Tag];
 
 /** True if any selection range touches (overlaps or sits at the edge of) [from, to]. */
 function selectionTouches(state: EditorState, from: number, to: number): boolean {
@@ -137,6 +213,25 @@ function buildDecorations(view: EditorView): DecorationSet {
           inlineDelimited(node, "cm-flint-code");
         } else if (name === "Strikethrough") {
           inlineDelimited(node, "cm-flint-strike");
+        } else if (name === "Highlight") {
+          inlineDelimited(node, "cm-flint-highlight");
+        } else if (name === "WikiLink") {
+          inlineDelimited(node, "cm-flint-link");
+        } else if (name === "FlintTag") {
+          add(node.from, node.to, Decoration.mark({ class: "cm-flint-tag" }));
+        } else if (name === "FencedCode") {
+          // Style every line of the block; conceal the ``` fences + language
+          // info unless the cursor is inside the block.
+          const startLine = state.doc.lineAt(node.from).number;
+          const endLine = state.doc.lineAt(node.to).number;
+          for (let ln = startLine; ln <= endLine; ln++) {
+            const line = state.doc.line(ln);
+            add(line.from, line.from, Decoration.line({ class: "cm-flint-codeblock" }));
+          }
+          if (selectionTouches(state, node.from, node.to)) return;
+          for (let c = node.firstChild; c; c = c.nextSibling) {
+            if (c.name === "CodeMark" || c.name === "CodeInfo") add(c.from, c.to, hide);
+          }
         } else if (HEADING_RE.test(name)) {
           const level = Number(HEADING_RE.exec(name)![1]);
           const line = state.doc.lineAt(node.from);
@@ -235,6 +330,22 @@ const livePreviewTheme = EditorView.theme({
   },
   ".cm-flint-bullet": { color: "var(--flint-syntax-markup)" },
   ".cm-flint-task": { verticalAlign: "middle", marginRight: "0.4em", cursor: "pointer" },
+  ".cm-flint-highlight": {
+    backgroundColor: "var(--flint-syntax-tag, rgba(239,159,39,0.25))",
+    borderRadius: "3px",
+    padding: "0.05em 0.15em",
+  },
+  ".cm-flint-tag": {
+    color: "var(--flint-syntax-tag)",
+    backgroundColor: "var(--flint-surface, rgba(239,159,39,0.12))",
+    borderRadius: "4px",
+    padding: "0.05em 0.35em",
+  },
+  ".cm-flint-codeblock": {
+    fontFamily: "var(--flint-font-mono)",
+    fontSize: "0.9em",
+    backgroundColor: "var(--flint-surface, rgba(255,255,255,0.05))",
+  },
 });
 
 /** The Live Preview extension: conceal-and-render Markdown with cursor reveal. */
