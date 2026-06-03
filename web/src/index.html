@@ -7,26 +7,24 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <title>Flint</title>
+    <!-- Design tokens (generated from tokens.json) — same source as the native
+         chrome, so the editor matches across the WKWebView seam (ADR-D03). -->
+    <link rel="stylesheet" href="./tokens.css" />
     <style>
-      /* Minimal placeholder styling for T3.1. The real editor theme (driven by
-         the design tokens) arrives with CodeMirror in T3.2. Warm near-black
-         field + warm light text so it matches the app chrome at the seam. */
       :root { color-scheme: light dark; }
-      html, body { margin: 0; height: 100%; }
+      html, body, #editor { margin: 0; height: 100%; }
       body {
-        font: 15px ui-sans-serif, -apple-system, system-ui, sans-serif;
-        background: #17130f;
-        color: #e8e1d6;
-        display: grid;
-        place-items: center;
-        padding: 24px;
+        background: var(--flint-bg);
+        color: var(--flint-text-primary);
+        font-family: var(--flint-font-sans);
         -webkit-text-size-adjust: 100%;
       }
-      #root { opacity: 0.75; text-align: center; line-height: 1.5; }
+      #editor { height: 100vh; }
+      .cm-editor { height: 100%; }
     </style>
   </head>
   <body>
-    <div id="root">Flint web runtime — loading…</div>
+    <div id="editor"></div>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

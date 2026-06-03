@@ -3,14 +3,20 @@
 // Serves the bundled web runtime (Resources/web) over a custom `flint://` scheme
 // via WKURLSchemeHandler — not file:// (cleaner asset serving, tighter origin;
 // locked in TASKS.md). The Swift side of the bridge (WebBridge) is registered
-// here. T3.1 loads a placeholder runtime that proves the bridge round-trip;
-// CodeMirror + doc load/save arrive in T3.2.
+// here. The web runtime hosts CodeMirror and pulls/pushes note text over the
+// bridge (`doc.load` / `doc.save`). Native owns *which* note is open and pushes
+// the path in via `flintOpen`; the editor owns the live buffer.
 import SwiftUI
 import WebKit
 
 /// SwiftUI host for the editor's WKWebView. One instance is reused across note
-/// switches (UIViewRepresentable reuses the underlying view).
+/// switches (UIViewRepresentable reuses the underlying view); switching notes is
+/// a `flintOpen(path)` push, not a reload.
 struct EditorWebView: UIViewRepresentable {
+    let vault: VaultStore
+    /// Vault-relative path of the selected note (nil → nothing selected).
+    let path: String?
+
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(FlintSchemeHandler(), forURLScheme: FlintScheme.name)
@@ -23,6 +29,7 @@ struct EditorWebView: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
+        context.coordinator.webView = webView
 
         if let start = FlintScheme.url(for: "index.html") {
             webView.load(URLRequest(url: start))
@@ -30,13 +37,41 @@ struct EditorWebView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {}
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        // Push the selected note to the editor when it changes. The editor also
+        // pulls the initial note itself on boot (doc.current), so an early push
+        // before the runtime is ready is a harmless no-op (guarded in JS).
+        let coordinator = context.coordinator
+        if !coordinator.didOpen || coordinator.openedPath != path {
+            coordinator.didOpen = true
+            coordinator.openedPath = path
+            coordinator.open(path: path)
+        }
+    }
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(vault: vault) }
 
     @MainActor final class Coordinator {
-        // Held here so it outlives makeUIView; the webview keeps a weak ref.
-        let bridge = WebBridge()
+        let bridge: WebBridge
+        weak var webView: WKWebView?
+        var openedPath: String?
+        var didOpen = false
+
+        init(vault: VaultStore) {
+            bridge = WebBridge(vault: vault)
+        }
+
+        /// Tell the editor which note to show (or `null` to clear).
+        func open(path: String?) {
+            guard let webView else { return }
+            Task {
+                _ = try? await webView.callAsyncJavaScript(
+                    "if (window.flintOpen) { window.flintOpen(path); }",
+                    arguments: ["path": path ?? NSNull()],
+                    contentWorld: .page
+                )
+            }
+        }
     }
 }
 

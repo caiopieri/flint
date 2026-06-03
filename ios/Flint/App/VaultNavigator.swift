@@ -292,7 +292,7 @@ private struct VaultTreeList: View {
                 withAnimation(.easeOut(duration: FlintMotion.base)) { toggle(node.url) }
             } else {
                 onSelectNote?()
-                Task { await vault.open(node) }
+                vault.open(node)
             }
         } label: {
             HStack(spacing: FlintSpace.s2) {
@@ -358,7 +358,7 @@ private struct NoteDetail: View {
     var body: some View {
         Group {
             if let selection = vault.selection {
-                EditorWebView()
+                EditorWebView(vault: vault, path: vault.selectedRelativePath)
                     .background(FlintColor.bg)
                     .navigationTitle(selection.name)
                     .navigationBarTitleDisplayMode(.inline)
