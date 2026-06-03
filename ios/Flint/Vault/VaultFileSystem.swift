@@ -10,9 +10,15 @@ import Foundation
 enum VaultFileSystem {
     enum VaultError: LocalizedError {
         case coordination(Error)
+        case invalidName
+        case nameInUse(String)
+        case invalidMove
         var errorDescription: String? {
             switch self {
             case .coordination(let e): return e.localizedDescription
+            case .invalidName: return "Please enter a name."
+            case .nameInUse(let n): return "“\(n)” already exists here."
+            case .invalidMove: return "Can't move a folder into itself."
             }
         }
     }
@@ -84,7 +90,72 @@ enum VaultFileSystem {
         if let thrown { throw thrown }
     }
 
+    /// Rename a note or folder in place. For notes the `.md` extension is kept
+    /// regardless of what the user typed (the tree shows the bare stem). Returns
+    /// the new URL. Throws `.nameInUse` rather than clobbering a sibling.
+    static func rename(_ url: URL, to newBaseName: String) throws -> URL {
+        let trimmed = newBaseName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("/") else { throw VaultError.invalidName }
+        let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+        let dir = url.deletingLastPathComponent()
+        let target = isDir
+            ? dir.appendingPathComponent(trimmed)
+            : dir.appendingPathComponent("\(trimmed).md")
+        if target == url { return url }
+        return try coordinatedMove(from: url, to: target)
+    }
+
+    /// Move a note or folder into `directory`, keeping its filename. Returns the
+    /// new URL. Refuses to move a folder inside its own subtree.
+    static func move(_ url: URL, into directory: URL) throws -> URL {
+        let target = directory.appendingPathComponent(url.lastPathComponent)
+        if target == url { return url }
+        if directory.path == url.path || directory.path.hasPrefix(url.path + "/") {
+            throw VaultError.invalidMove
+        }
+        return try coordinatedMove(from: url, to: target)
+    }
+
+    /// Delete a note or folder (coordinated). The UI confirms first.
+    static func delete(_ url: URL) throws {
+        let coordinator = NSFileCoordinator()
+        var coordError: NSError?
+        var thrown: Error?
+        coordinator.coordinate(writingItemAt: url, options: .forDeleting, error: &coordError) { dst in
+            do { try FileManager.default.removeItem(at: dst) }
+            catch { thrown = error }
+        }
+        if let coordError { throw VaultError.coordination(coordError) }
+        if let thrown { throw thrown }
+    }
+
     // MARK: - Private
+
+    /// Coordinated rename/move. Fails loudly if the destination is taken so an
+    /// existing sibling is never overwritten.
+    private static func coordinatedMove(from src: URL, to dst: URL) throws -> URL {
+        if FileManager.default.fileExists(atPath: dst.path) {
+            throw VaultError.nameInUse(dst.deletingPathExtension().lastPathComponent)
+        }
+        let coordinator = NSFileCoordinator()
+        var coordError: NSError?
+        var thrown: Error?
+        coordinator.coordinate(
+            writingItemAt: src, options: .forMoving,
+            writingItemAt: dst, options: .forReplacing,
+            error: &coordError
+        ) { from, to in
+            let fileManager = FileManager.default
+            coordinator.item(at: from, willMoveTo: to)
+            do {
+                try fileManager.moveItem(at: from, to: to)
+                coordinator.item(at: from, didMoveTo: to)
+            } catch { thrown = error }
+        }
+        if let coordError { throw VaultError.coordination(coordError) }
+        if let thrown { throw thrown }
+        return dst
+    }
 
     private static func coordinatedRead<T>(_ url: URL, _ body: (URL) throws -> T) throws -> T {
         let coordinator = NSFileCoordinator()

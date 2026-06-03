@@ -67,6 +67,34 @@ final class iCloudDriveProvider: SyncProvider {
         }.value
     }
 
+    // MARK: - Rename / move / delete
+
+    func rename(_ url: URL, to newBaseName: String) async throws -> URL {
+        let cache = baseCache
+        return try await Task.detached(priority: .userInitiated) {
+            let newURL = try VaultFileSystem.rename(url, to: newBaseName)
+            cache.forget(url)   // the ancestor was keyed by the old path
+            return newURL
+        }.value
+    }
+
+    func move(_ url: URL, into directory: URL) async throws -> URL {
+        let cache = baseCache
+        return try await Task.detached(priority: .userInitiated) {
+            let newURL = try VaultFileSystem.move(url, into: directory)
+            cache.forget(url)
+            return newURL
+        }.value
+    }
+
+    func delete(_ url: URL) async throws {
+        let cache = baseCache
+        try await Task.detached(priority: .userInitiated) {
+            try VaultFileSystem.delete(url)
+            cache.forget(url)
+        }.value
+    }
+
     // MARK: - Watching
 
     func watch(_ onChange: @escaping @Sendable () -> Void) -> any SyncWatch {

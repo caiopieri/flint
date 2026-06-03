@@ -294,6 +294,49 @@ final class VaultStore {
         }
     }
 
+    // MARK: - Rename / move / delete
+
+    /// Rename a note or folder. Keeps it selected if it was the open note.
+    func rename(_ node: VaultNode, to newName: String) async {
+        guard let provider else { return }
+        do {
+            let newURL = try await provider.rename(node.url, to: newName)
+            let wasSelected = selection?.url == node.url
+            await reload()
+            if wasSelected, let moved = findNode(newURL, in: tree) { selection = moved }
+        } catch {
+            errorMessage = "Couldn't rename: \(error.localizedDescription)"
+        }
+    }
+
+    /// Move a note or folder into `directory` (a folder node).
+    func move(_ node: VaultNode, into directory: VaultNode) async {
+        guard let provider, directory.isDirectory else { return }
+        do {
+            let newURL = try await provider.move(node.url, into: directory.url)
+            let wasSelected = selection?.url == node.url
+            await reload()
+            if wasSelected, let moved = findNode(newURL, in: tree) { selection = moved }
+        } catch {
+            errorMessage = "Couldn't move: \(error.localizedDescription)"
+        }
+    }
+
+    /// Delete a note or folder. Clears the selection if it was the open note.
+    func delete(_ node: VaultNode) async {
+        guard let provider else { return }
+        do {
+            try await provider.delete(node.url)
+            if selection?.url == node.url { selection = nil }
+            await reload()
+        } catch {
+            errorMessage = "Couldn't delete: \(error.localizedDescription)"
+        }
+    }
+
+    /// Find a node by its URL anywhere in the current tree (used by drag-drop).
+    func node(at url: URL) -> VaultNode? { findNode(url, in: tree) }
+
     private func findNode(_ url: URL, in node: VaultNode?) -> VaultNode? {
         guard let node else { return nil }
         if node.url == url { return node }
