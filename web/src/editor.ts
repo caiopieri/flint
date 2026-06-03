@@ -6,7 +6,14 @@
 // (ADR-D03/D04) and follow dark/light automatically.
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, drawSelection } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import {
+  cursorLineDown,
+  cursorLineUp,
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
@@ -58,6 +65,8 @@ export interface FlintEditor {
   setDoc(text: string): void;
   getDoc(): string;
   focus(): void;
+  /** Move the cursor one line up/down (driven by the native keyboard bar). */
+  moveCursor(dir: "up" | "down"): void;
 }
 
 export function createEditor(parent: HTMLElement, onChange: (text: string) => void): FlintEditor {
@@ -95,5 +104,9 @@ export function createEditor(parent: HTMLElement, onChange: (text: string) => vo
     },
     getDoc: () => view.state.doc.toString(),
     focus: () => view.focus(),
+    moveCursor(dir) {
+      (dir === "up" ? cursorLineUp : cursorLineDown)(view);
+      view.focus();
+    },
   };
 }
