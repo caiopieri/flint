@@ -2,9 +2,9 @@
 //
 // No app state here, only I/O. Every access is wrapped in NSFileCoordinator so
 // we play nicely with iCloud/other-app writers and see a consistent file. These
-// functions are synchronous and `nonisolated`; call them off the main actor
-// (the store uses Task.detached). In T2 this becomes the iCloudDriveProvider
-// behind the SyncProvider protocol — no raw FileManager calls leak past here.
+// functions are synchronous and `nonisolated`; the iCloudDriveProvider calls them
+// off the main actor (Task.detached). Since T2 these are the provider's private
+// engine — no raw FileManager calls live above the SyncProvider layer.
 import Foundation
 
 enum VaultFileSystem {

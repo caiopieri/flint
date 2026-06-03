@@ -2,7 +2,8 @@
 //
 // Owns the security-scoped bookmark lifecycle (ADR-011), the recent-vaults list,
 // the in-memory tree, the currently open note, and the external-change watcher.
-// UI reads this; all disk work is delegated to VaultFileSystem on a background task.
+// UI reads this; all disk work is delegated to a SyncProvider (T2) — the store
+// never touches FileManager/NSFileCoordinator itself.
 import Foundation
 import Observation
 
@@ -70,7 +71,8 @@ final class VaultStore {
     private let sortKey = "flint.vault.sort"
     private let recentsLimit = 8
     private var accessedURL: URL?
-    private var presenter: VaultPresenter?
+    private var provider: (any SyncProvider)?
+    private var watch: (any SyncWatch)?
     private var reloadTask: Task<Void, Never>?
 
     init() {
@@ -165,11 +167,17 @@ final class VaultStore {
         _ = url.startAccessingSecurityScopedResource()
         accessedURL = url
         rootURL = url
-        startWatching(url)
+        let provider = iCloudDriveProvider(root: url)
+        self.provider = provider
+        watch = provider.watch { [weak self] in
+            Task { @MainActor in self?.scheduleReload() }
+        }
     }
 
     private func stopAccess() {
-        stopWatching()
+        watch?.cancel()
+        watch = nil
+        provider = nil
         accessedURL?.stopAccessingSecurityScopedResource()
         accessedURL = nil
     }
@@ -218,15 +226,13 @@ final class VaultStore {
     }
 
     func reload() async {
-        guard let url = rootURL else { return }
+        guard let provider else { return }
         do {
-            let newTree = try await Task.detached(priority: .userInitiated) {
-                try VaultFileSystem.buildTree(root: url)
-            }.value
+            let newTree = try await provider.list()
             tree = newTree
             errorMessage = nil
             if let selection {
-                if FileManager.default.fileExists(atPath: selection.url.path) {
+                if findNode(selection.url, in: newTree) != nil {
                     await open(selection)
                 } else {
                     self.selection = nil
@@ -241,14 +247,10 @@ final class VaultStore {
     // MARK: - Opening / creating notes
 
     func open(_ node: VaultNode) async {
-        guard !node.isDirectory else { return }
+        guard !node.isDirectory, let provider else { return }
         selection = node
         do {
-            let url = node.url
-            let text = try await Task.detached(priority: .userInitiated) {
-                try VaultFileSystem.readNote(at: url)
-            }.value
-            noteText = text
+            noteText = try await provider.read(node.url)
         } catch {
             noteText = nil
             errorMessage = "Couldn't open \(node.name): \(error.localizedDescription)"
@@ -257,11 +259,9 @@ final class VaultStore {
 
     /// Create a new note at the vault root, then select and open it.
     func createNote() async {
-        guard let root = rootURL else { return }
+        guard let provider, let root = rootURL else { return }
         do {
-            let url = try await Task.detached(priority: .userInitiated) {
-                try VaultFileSystem.createNote(in: root)
-            }.value
+            let url = try await provider.createNote(in: root, baseName: "Untitled")
             await reload()
             if let node = findNode(url, in: tree) { await open(node) }
         } catch {
@@ -271,11 +271,9 @@ final class VaultStore {
 
     /// Create a new folder at the vault root, then reload the tree.
     func createFolder() async {
-        guard let root = rootURL else { return }
+        guard let provider, let root = rootURL else { return }
         do {
-            _ = try await Task.detached(priority: .userInitiated) {
-                try VaultFileSystem.createFolder(in: root)
-            }.value
+            _ = try await provider.createFolder(in: root, baseName: "New Folder")
             await reload()
         } catch {
             errorMessage = "Couldn't create a folder: \(error.localizedDescription)"
@@ -289,22 +287,5 @@ final class VaultStore {
             if let found = findNode(url, in: child) { return found }
         }
         return nil
-    }
-
-    // MARK: - External-change watching (NSFilePresenter)
-
-    private func startWatching(_ url: URL) {
-        let presenter = VaultPresenter(url: url) { [weak self] in
-            Task { @MainActor in self?.scheduleReload() }
-        }
-        self.presenter = presenter
-        NSFileCoordinator.addFilePresenter(presenter)
-    }
-
-    private func stopWatching() {
-        if let presenter {
-            NSFileCoordinator.removeFilePresenter(presenter)
-            self.presenter = nil
-        }
     }
 }
