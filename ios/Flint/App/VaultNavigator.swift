@@ -261,6 +261,11 @@ private struct VaultTreeList: View {
     let vault: VaultStore
     var onSelectNote: (() -> Void)?
     @State private var expanded: Set<URL> = []
+    @State private var renaming: VaultNode?
+    @State private var renameText = ""
+    @State private var deleting: VaultNode?
+    @State private var dropTarget: URL?
+    @FocusState private var renameFocused: Bool
 
     var body: some View {
         ScrollView {
@@ -273,6 +278,24 @@ private struct VaultTreeList: View {
             .padding(.vertical, FlintSpace.s2)
         }
         .background(FlintColor.surface)
+        // Destructive delete always confirms first.
+        .confirmationDialog(
+            deleting.map { "Delete “\($0.name)”?" } ?? "",
+            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let node = deleting { Task { await vault.delete(node) } }
+                deleting = nil
+            }
+            Button("Cancel", role: .cancel) { deleting = nil }
+        } message: {
+            if let node = deleting {
+                Text(node.isDirectory
+                    ? "This folder and its notes will be deleted."
+                    : "This note will be deleted.")
+            }
+        }
     }
 
     private func flattened(_ nodes: [VaultNode], depth: Int) -> [(node: VaultNode, depth: Int)] {
@@ -286,7 +309,97 @@ private struct VaultTreeList: View {
         return rows
     }
 
+    // The row plus its interactions: long-press → context menu (rename/delete),
+    // drag → move; folder rows are drop targets that highlight while targeted.
+    // iOS disambiguates press-and-hold (menu) from press-and-drag (move) natively.
+    @ViewBuilder
     private func row(_ node: VaultNode, depth: Int) -> some View {
+        if renaming?.id == node.id {
+            renameRow(node, depth: depth)
+        } else {
+            let base = rowButton(node, depth: depth)
+                .contextMenu {
+                    Button("Rename", systemImage: "pencil") {
+                        renameText = node.name
+                        renaming = node
+                    }
+                    Button("Delete", systemImage: "trash", role: .destructive) {
+                        deleting = node
+                    }
+                }
+                .draggable(node.url.absoluteString)
+
+            if node.isDirectory {
+                base.dropDestination(for: String.self) { items, _ in
+                    handleDrop(items, into: node)
+                } isTargeted: { targeted in
+                    dropTarget = targeted ? node.url : (dropTarget == node.url ? nil : dropTarget)
+                }
+            } else {
+                base
+            }
+        }
+    }
+
+    // Inline rename, Obsidian-style: the row's name becomes an editable field in
+    // place (no modal). Commits on Return or when focus leaves (tap elsewhere);
+    // an empty or unchanged name is a no-op.
+    private func renameRow(_ node: VaultNode, depth: Int) -> some View {
+        HStack(spacing: FlintSpace.s2) {
+            Group {
+                if node.isDirectory {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(FlintColor.textMuted)
+                        .rotationEffect(.degrees(expanded.contains(node.url) ? 90 : 0))
+                } else {
+                    Color.clear
+                }
+            }
+            .frame(width: 10)
+
+            Image(systemName: node.isDirectory ? "folder" : "doc.text")
+                .foregroundStyle(FlintColor.textSecondary)
+                .frame(width: 20)
+
+            TextField("Name", text: $renameText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .foregroundStyle(FlintColor.textPrimary)
+                .focused($renameFocused)
+                .submitLabel(.done)
+                .onSubmit { commitRename(node) }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, CGFloat(depth) * FlintSpace.s4 + FlintSpace.s4)
+        .padding(.trailing, FlintSpace.s4)
+        .padding(.vertical, FlintSpace.s2)
+        .background(FlintColor.surfaceRaised)
+        .onAppear { renameFocused = true }
+        .onChange(of: renameFocused) { _, focused in
+            if !focused { commitRename(node) }   // tapping away commits, like Obsidian
+        }
+    }
+
+    private func commitRename(_ node: VaultNode) {
+        guard renaming?.id == node.id else { return }   // already handled
+        renaming = nil
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != node.name else { return }
+        Task { await vault.rename(node, to: trimmed) }
+    }
+
+    /// Move dropped node(s) into `folder`. The payload is a node's URL string.
+    private func handleDrop(_ items: [String], into folder: VaultNode) -> Bool {
+        guard let raw = items.first,
+              let url = URL(string: raw),
+              let node = vault.node(at: url) else { return false }
+        Task { await vault.move(node, into: folder) }
+        return true
+    }
+
+    private func rowButton(_ node: VaultNode, depth: Int) -> some View {
         Button {
             if node.isDirectory {
                 withAnimation(.easeOut(duration: FlintMotion.base)) { toggle(node.url) }
@@ -337,7 +450,9 @@ private struct VaultTreeList: View {
 
     @ViewBuilder
     private func rowBackground(_ node: VaultNode) -> some View {
-        if isSelected(node) {
+        if dropTarget == node.url {
+            FlintColor.accent.opacity(0.15)         // drop here
+        } else if isSelected(node) {
             ZStack(alignment: .leading) {
                 FlintColor.surfaceRaised
                 FlintColor.accent.frame(width: 2)   // "you are here" spark

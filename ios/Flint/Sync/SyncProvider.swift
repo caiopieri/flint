@@ -47,6 +47,16 @@ protocol SyncProvider: Sendable {
     /// Create a new folder with a non-colliding name; returns its URL.
     func createFolder(in directory: URL, baseName: String) async throws -> URL
 
+    /// Rename a note/folder in place; returns its new URL. Throws if the name is
+    /// already taken (never overwrites a sibling).
+    func rename(_ url: URL, to newBaseName: String) async throws -> URL
+
+    /// Move a note/folder into another folder; returns its new URL.
+    func move(_ url: URL, into directory: URL) async throws -> URL
+
+    /// Delete a note/folder.
+    func delete(_ url: URL) async throws
+
     /// Observe external changes (sync from another device, edits in Obsidian /
     /// Finder). The callback may arrive on any queue.
     func watch(_ onChange: @escaping @Sendable () -> Void) -> any SyncWatch

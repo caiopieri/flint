@@ -60,6 +60,11 @@ async function openPath(path: string | null): Promise<void> {
   void openPath(path);
 };
 
+// Native → JS: the keyboard bar's up/down arrows move the cursor by line.
+(window as unknown as { flintMoveCursor: (dir: "up" | "down") => void }).flintMoveCursor = (dir) => {
+  editor?.moveCursor(dir);
+};
+
 async function main(): Promise<void> {
   const mount = document.getElementById("editor");
   if (!mount) return;

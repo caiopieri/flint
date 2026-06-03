@@ -29,6 +29,7 @@ struct EditorWebView: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
+        webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
 
         if let start = FlintScheme.url(for: "index.html") {
@@ -51,14 +52,25 @@ struct EditorWebView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(vault: vault) }
 
-    @MainActor final class Coordinator {
+    @MainActor final class Coordinator: NSObject, WKNavigationDelegate {
         let bridge: WebBridge
         weak var webView: WKWebView?
         var openedPath: String?
         var didOpen = false
+        /// Held strongly so the custom keyboard bar outlives each install.
+        private var accessory: FlintKeyboardAccessory?
 
         init(vault: VaultStore) {
             bridge = WebBridge(vault: vault)
+            super.init()
+        }
+
+        // The inner content view exists once the page has loaded — swap in the
+        // transparent keyboard bar then.
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            let bar = accessory ?? FlintKeyboardAccessory(webView: webView)
+            accessory = bar
+            webView.installFlintKeyboardAccessory(bar)
         }
 
         /// Tell the editor which note to show (or `null` to clear).
