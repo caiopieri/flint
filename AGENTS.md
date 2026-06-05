@@ -94,7 +94,7 @@ You are a senior iOS engineer. You are skeptical by default. You do not write co
 
 ## Status
 
-Pre-code. The repo currently contains planning docs only. When implementation starts, follow the structure in `docs/ARCHITECTURE.md`.
+**Phase 1a in progress.** Done: T0 (scaffold), T1 (vault), T2 (SyncProvider + iCloud conflicts), T3 (CodeMirror editor over the bridge), T4 (full-text search — SQLite FTS5 via GRDB), plus T8 (editor Live Preview) and T9 (vault file management). **Next: T5 — frontmatter, tags, theme.** Track concrete state in [`docs/TASKS.md`](./docs/TASKS.md) (checkboxes + PR refs); follow the module structure in `docs/ARCHITECTURE.md`.
 
 ---
 

@@ -9,6 +9,8 @@ The concrete, ordered plan for building the **Phase 1 MVP**. Read [`../AGENTS.md
 - **Vertical slices.** Prefer "thin thing that works end-to-end" over "whole layer, untested."
 - **Respect the scope locks.** Especially: no public Plugin API in Phase 1; Ink MVP = one page, save, embed, open. If a task tempts you past a lock in AGENTS.md, stop and flag it.
 - A task is done only when its **DoD (Definition of Done)** is met — not when the code compiles.
+- **Close the loop in the same PR.** The PR that finishes a task flips its checkboxes to `[x]` and tags the heading with `✅ (done — PR #N)`. This file is only trustworthy as the next-task source if it never drifts from git — so reconcile it in the change, not later.
+- **Log emergent tasks when they're born.** Work that wasn't in the original plan (e.g. T8, T9 came in mid-stream) gets its own `T<n>` number and a one-line `> Added mid-stream` note explaining why, at the moment it's picked up — not reconstructed afterward.
 
 ---
 
@@ -47,31 +49,43 @@ Change these only with the author's sign-off (some are noted as the author's cal
 - [x] T0.2 `web/` (TypeScript + esbuild) producing a bundle, copied into the app's resources by `scripts/build-web.sh` (also an Xcode pre-build phase).
 - **DoD met:** `make build` → **BUILD SUCCEEDED** for the simulator; the web bundle ships inside `Flint.app/web/`; empty SwiftUI shell.
 
-### T1 — Vault (files-as-truth)
-- [ ] T1.1 Folder picker (`.fileImporter`) to choose the vault folder; persist a **security-scoped bookmark**; resolve it on launch.
-- [ ] T1.2 Enumerate folders/`.md` files under `NSFileCoordinator`; build an in-memory tree for navigation.
-- [ ] T1.3 Coordinated read of a note's text; coordinated write-back. Observe external changes (`NSFilePresenter`) and refresh.
-- **DoD:** pick your real Obsidian vault folder, see the folder/note tree, open a note and see its text; an external edit (e.g. on Mac) shows up.
+### T1 — Vault (files-as-truth) ✅ (done — PR #3)
+- [x] T1.1 Folder picker (`.fileImporter`) to choose the vault folder; persist a **security-scoped bookmark**; resolve it on launch.
+- [x] T1.2 Enumerate folders/`.md` files under `NSFileCoordinator`; build an in-memory tree for navigation.
+- [x] T1.3 Coordinated read of a note's text; coordinated write-back. Observe external changes (`NSFilePresenter`) and refresh.
+- **DoD met:** pick your real Obsidian vault folder, see the folder/note tree, open a note and see its text; an external edit (e.g. on Mac) shows up.
 
-### T2 — SyncProvider abstraction
-- [ ] T2.1 Define the `SyncProvider` protocol (`list`, `read`, `write`, `watch`, `resolveConflict`). **All vault access from T1 routes through it.**
-- [ ] T2.2 Implement `iCloudDriveProvider` over T1 (files in an iCloud-synced folder; "sync" is iCloud + conflict handling).
-- [ ] T2.3 Conflict handling: detect iCloud conflict versions (`NSFileVersion`) → attempt 3-way merge → fall back to a `.conflict` sibling file. **Never silently lose an edit.**
-- **DoD:** no raw `FileManager` calls leak outside the provider; a simulated two-device offline edit yields either a clean merge or a `.conflict` file.
+### T2 — SyncProvider abstraction ✅ (done — PR #4)
+- [x] T2.1 Define the `SyncProvider` protocol (`list`, `read`, `write`, `watch`, `resolveConflict`). **All vault access from T1 routes through it.**
+- [x] T2.2 Implement `iCloudDriveProvider` over T1 (files in an iCloud-synced folder; "sync" is iCloud + conflict handling).
+- [x] T2.3 Conflict handling: detect iCloud conflict versions (`NSFileVersion`) → attempt 3-way merge → fall back to a `.conflict` sibling file. **Never silently lose an edit.**
+- **DoD met:** no raw `FileManager` calls leak outside the provider; a simulated two-device offline edit yields either a clean merge or a `.conflict` file.
 
-### T3 — Editor (CodeMirror in WKWebView) + Bridge
-- [ ] T3.1 `EditorHost`: a `WKWebView` serving the bundle via the `flint://` scheme handler. Prove the **bridge** first with a trivial echo (JS `bridge.call("ping")` → Swift → reply).
-- [ ] T3.2 Bridge methods `doc.load(path)` and `doc.save(path, text)` wired to `SyncProvider`. Typed envelope; debounced saves.
-- [ ] T3.3 CodeMirror 6 in `web/editor/` with the Markdown language + dark/light theme. Load note text on open; emit debounced changes → `doc.save`.
-- **DoD:** open a note → edit in CodeMirror → changes persist to the `.md` on disk → reopening shows the saved text.
+### T3 — Editor (CodeMirror in WKWebView) + Bridge ✅ (done — PRs #5, #6)
+- [x] T3.1 `EditorHost`: a `WKWebView` serving the bundle via the `flint://` scheme handler. Prove the **bridge** first with a trivial echo (JS `bridge.call("ping")` → Swift → reply).
+- [x] T3.2 Bridge methods `doc.load(path)` and `doc.save(path, text)` wired to `SyncProvider`. Typed envelope; debounced saves.
+- [x] T3.3 CodeMirror 6 in `web/editor/` with the Markdown language + dark/light theme. Load note text on open; emit debounced changes → `doc.save`.
+- **DoD met:** open a note → edit in CodeMirror → changes persist to the `.md` on disk → reopening shows the saved text.
 
-### T4 — Full-text search
-- [ ] T4.1 `Search` module: SQLite FTS5 (GRDB) indexing path/title/body of every `.md`. Rebuildable from the vault.
-- [ ] T4.2 Build the index on first launch; update incrementally on file change (via the `SyncProvider` watch).
-- [ ] T4.3 Search UI: query → ranked results → open note.
-- **DoD:** a query returns matching notes and opens them; deleting the index file and relaunching rebuilds it with no data loss (proves it's disposable).
+### T8 — Editor Live Preview ✅ (done — PR #7)
+> Added mid-stream (not in the original T0–T7 plan). Once the editor was real, conceal-and-render Markdown was the obvious next polish, so it shipped before search.
+- [x] T8.1 Conceal-and-render Markdown in CodeMirror (headings, emphasis, links, lists rendered in place; raw syntax revealed on the active line).
+- **DoD met:** editing a note shows rendered Markdown live, with the source revealed only on the line under the cursor.
 
-### T5 — Frontmatter, tags, theme
+### T9 — Vault file management ✅ (done — PR #8)
+> Added mid-stream. Daily-driver usability gap: the vault tree was read-only. Rename/move/delete + gestures made it actually usable before search landed.
+- [x] T9.1 Rename / move / delete vault files (routed through `SyncProvider`, never raw `FileManager`).
+- [x] T9.2 Sidebar gestures for file actions.
+- [x] T9.3 Floating keyboard bar in the editor.
+- **DoD met:** rename, move, and delete notes from the sidebar; changes land on disk and the tree refreshes.
+
+### T4 — Full-text search ✅ (done — PR #9)
+- [x] T4.1 `Search` module: SQLite FTS5 (GRDB) indexing path/title/body of every `.md`. Rebuildable from the vault.
+- [x] T4.2 Build the index on first launch; update incrementally on file change (via the `SyncProvider` watch).
+- [x] T4.3 Search UI: query → ranked results → open note.
+- **DoD met:** a query returns matching notes and opens them; deleting the index file and relaunching rebuilds it with no data loss (proves it's disposable). 14 `SearchIndexTests` cover query/ranking/rebuild/diff/sanitization; full suite green.
+
+### T5 — Frontmatter, tags, theme ⬅️ **next**
 - [ ] T5.1 Parse YAML frontmatter; surface `tags`; basic tag list/filter.
 - [ ] T5.2 Dark/light theme wired through both the native shell and CodeMirror, following system appearance.
 - **DoD:** a note with frontmatter shows its tags; toggling system appearance updates the editor too.

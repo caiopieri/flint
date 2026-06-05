@@ -163,13 +163,69 @@ private struct SidebarContent: View {
         VStack(spacing: 0) {
             header
             FlintColor.border.frame(height: 1)
-            if vault.tree?.children?.isEmpty ?? true {
+            searchBar
+            if vault.isSearching {
+                if vault.searchResults.isEmpty {
+                    searchEmptyState
+                } else {
+                    SearchResultsList(vault: vault, onSelectNote: onSelectNote)
+                }
+            } else if vault.tree?.children?.isEmpty ?? true {
                 emptyState
             } else {
                 VaultTreeList(vault: vault, onSelectNote: onSelectNote)
             }
         }
         .background(FlintColor.surface)
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: FlintSpace.s2) {
+            Image(systemName: "magnifyingglass")
+                .font(.subheadline)
+                .foregroundStyle(FlintColor.textMuted)
+            TextField("Search", text: Binding(
+                get: { vault.searchQuery },
+                set: { vault.searchQuery = $0 }
+            ))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .foregroundStyle(FlintColor.textPrimary)
+            .tint(FlintColor.accent)
+            .onChange(of: vault.searchQuery) { _, _ in vault.runSearch() }
+            if vault.isSearching {
+                Button {
+                    vault.searchQuery = ""
+                    vault.runSearch()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(FlintColor.textMuted)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, FlintSpace.s3)
+        .padding(.vertical, FlintSpace.s2)
+        .background(FlintColor.surfaceRaised)
+        .clipShape(RoundedRectangle(cornerRadius: FlintRadius.md, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: FlintRadius.md, style: .continuous)
+                .stroke(FlintColor.borderSubtle, lineWidth: 1)
+        )
+        .padding(.horizontal, FlintSpace.s4)
+        .padding(.top, FlintSpace.s2)
+        .padding(.bottom, FlintSpace.s1)
+    }
+
+    private var searchEmptyState: some View {
+        VStack(spacing: FlintSpace.s2) {
+            Spacer()
+            Text("No results")
+                .font(.subheadline)
+                .foregroundStyle(FlintColor.textSecondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var header: some View {
@@ -460,6 +516,84 @@ private struct VaultTreeList: View {
         } else {
             Color.clear
         }
+    }
+}
+
+// MARK: - Search results
+
+private struct SearchResultsList: View {
+    let vault: VaultStore
+    var onSelectNote: (() -> Void)?
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(vault.searchResults, id: \.relativePath) { hit in
+                    Button {
+                        onSelectNote?()
+                        vault.openHit(hit)
+                    } label: {
+                        SearchResultRow(hit: hit)
+                    }
+                    .buttonStyle(.flintRow(pressedFill: FlintColor.surfaceRaised))
+                }
+            }
+            .padding(.vertical, FlintSpace.s2)
+        }
+        .background(FlintColor.surface)
+    }
+}
+
+private struct SearchResultRow: View {
+    let hit: SearchHit
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(hit.title)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundStyle(FlintColor.textPrimary)
+                .lineLimit(1)
+            if !hit.snippet.isEmpty {
+                Text(snippetText(hit.snippet))
+                    .font(.caption)
+                    .foregroundStyle(FlintColor.textSecondary)
+                    .lineLimit(2)
+            } else {
+                Text(hit.relativePath)
+                    .font(.caption)
+                    .foregroundStyle(FlintColor.textMuted)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, FlintSpace.s4)
+        .padding(.vertical, FlintSpace.s2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    /// Parse `⟨term⟩` markers into an `AttributedString` with `accentText` color.
+    private func snippetText(_ raw: String) -> AttributedString {
+        var result = AttributedString()
+        let open = SearchIndex.snippetOpen
+        let close = SearchIndex.snippetClose
+        let parts = raw.components(separatedBy: open)
+        for (i, part) in parts.enumerated() {
+            if i == 0 {
+                result += AttributedString(part)
+            } else {
+                let sub = part.components(separatedBy: close)
+                if sub.count >= 2 {
+                    var highlighted = AttributedString(sub[0])
+                    highlighted.foregroundColor = FlintColor.accentText
+                    result += highlighted
+                    result += AttributedString(sub.dropFirst().joined(separator: close))
+                } else {
+                    result += AttributedString(part)
+                }
+            }
+        }
+        return result
     }
 }
 

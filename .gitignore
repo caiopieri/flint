@@ -40,6 +40,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# FIC spec drafts (rascunhos — não são fonte de verdade)
+docs/specs/**/progress.md
+
 # Generated Xcode project (XcodeGen — source of truth is ios/project.yml)
 *.xcodeproj
 ios/Flint/Info.plist

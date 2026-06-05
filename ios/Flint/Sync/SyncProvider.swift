@@ -61,6 +61,12 @@ protocol SyncProvider: Sendable {
     /// Finder). The callback may arrive on any queue.
     func watch(_ onChange: @escaping @Sendable () -> Void) -> any SyncWatch
 
+    /// Plain coordinated reads for the disposable search index. Unlike `read`, does
+    /// NOT reconcile iCloud conflicts and does NOT advance the merge base — the index
+    /// is derived and must observe content without perturbing sync state. Best-effort:
+    /// unreadable files are omitted from the result, not thrown.
+    func readForIndex(_ urls: [URL]) async throws -> [URL: String]
+
     /// Detect and reconcile iCloud conflict versions for one file. Never loses an
     /// edit: clean hunks merge into the file, anything ambiguous is preserved in
     /// a `.conflict` sibling.
