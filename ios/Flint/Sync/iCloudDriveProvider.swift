@@ -67,6 +67,18 @@ final class iCloudDriveProvider: SyncProvider {
         }.value
     }
 
+    func readForIndex(_ urls: [URL]) async throws -> [URL: String] {
+        return await Task.detached(priority: .utility) {
+            var result: [URL: String] = [:]
+            for url in urls {
+                if let text = try? VaultFileSystem.readNote(at: url) {
+                    result[url] = text
+                }
+            }
+            return result
+        }.value
+    }
+
     // MARK: - Rename / move / delete
 
     func rename(_ url: URL, to newBaseName: String) async throws -> URL {

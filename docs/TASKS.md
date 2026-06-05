@@ -79,13 +79,13 @@ Change these only with the author's sign-off (some are noted as the author's cal
 - [x] T9.3 Floating keyboard bar in the editor.
 - **DoD met:** rename, move, and delete notes from the sidebar; changes land on disk and the tree refreshes.
 
-### T4 — Full-text search ⬅️ **next**
-- [ ] T4.1 `Search` module: SQLite FTS5 (GRDB) indexing path/title/body of every `.md`. Rebuildable from the vault.
-- [ ] T4.2 Build the index on first launch; update incrementally on file change (via the `SyncProvider` watch).
-- [ ] T4.3 Search UI: query → ranked results → open note.
-- **DoD:** a query returns matching notes and opens them; deleting the index file and relaunching rebuilds it with no data loss (proves it's disposable).
+### T4 — Full-text search ✅ (done — PR #9)
+- [x] T4.1 `Search` module: SQLite FTS5 (GRDB) indexing path/title/body of every `.md`. Rebuildable from the vault.
+- [x] T4.2 Build the index on first launch; update incrementally on file change (via the `SyncProvider` watch).
+- [x] T4.3 Search UI: query → ranked results → open note.
+- **DoD met:** a query returns matching notes and opens them; deleting the index file and relaunching rebuilds it with no data loss (proves it's disposable). 14 `SearchIndexTests` cover query/ranking/rebuild/diff/sanitization; full suite green.
 
-### T5 — Frontmatter, tags, theme
+### T5 — Frontmatter, tags, theme ⬅️ **next**
 - [ ] T5.1 Parse YAML frontmatter; surface `tags`; basic tag list/filter.
 - [ ] T5.2 Dark/light theme wired through both the native shell and CodeMirror, following system appearance.
 - **DoD:** a note with frontmatter shows its tags; toggling system appearance updates the editor too.

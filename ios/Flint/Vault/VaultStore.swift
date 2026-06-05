@@ -74,6 +74,13 @@ final class VaultStore {
         let bookmark: Data
     }
 
+    /// Current search query. Bind to the sidebar search field; set to "" to clear.
+    var searchQuery: String = ""
+    /// Ranked results for the current `searchQuery`. Empty when not searching.
+    private(set) var searchResults: [SearchHit] = []
+    /// True while the user has typed a non-empty search query.
+    var isSearching: Bool { !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
     private let bookmarkKey = "flint.vault.bookmark"
     private let recentsKey = "flint.vault.recents"
     private let sortKey = "flint.vault.sort"
@@ -82,6 +89,9 @@ final class VaultStore {
     private var provider: (any SyncProvider)?
     private var watch: (any SyncWatch)?
     private var reloadTask: Task<Void, Never>?
+    private var indexTask: Task<Void, Never>?
+    private var searchTask: Task<Void, Never>?
+    private var searchIndex: SearchIndex?
 
     init() {
         if let raw = UserDefaults.standard.string(forKey: sortKey),
@@ -178,9 +188,17 @@ final class VaultStore {
         watch = provider.watch { [weak self] in
             Task { @MainActor in self?.scheduleReload() }
         }
+        searchIndex = try? SearchIndex(vaultRoot: url)
     }
 
     private func stopAccess() {
+        indexTask?.cancel()
+        indexTask = nil
+        searchTask?.cancel()
+        searchTask = nil
+        searchIndex = nil   // closes the DatabaseQueue
+        searchQuery = ""
+        searchResults = []
         watch?.cancel()
         watch = nil
         provider = nil
@@ -245,9 +263,99 @@ final class VaultStore {
             if let selection, findNode(selection.url, in: newTree) == nil {
                 self.selection = nil
             }
+            scheduleIndexSync()
         } catch {
             errorMessage = "Couldn't read the vault: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Search index sync
+
+    /// Coalesces rapid reloads into a single background index pass.
+    private func scheduleIndexSync() {
+        indexTask?.cancel()
+        indexTask = Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            await self.performIndexSync()
+        }
+    }
+
+    private func performIndexSync() async {
+        guard let index = searchIndex,
+              let provider = provider,
+              let root = rootURL,
+              let tree = tree else { return }
+
+        let flat = flattenNotes(tree, root: root)
+        guard !Task.isCancelled else { return }
+
+        do {
+            let (toReadPaths, toDelete) = try await index.diff(current: flat)
+            guard !Task.isCancelled else { return }
+
+            let toReadURLs = toReadPaths.compactMap { root.appendingPathComponent($0) }
+            let texts = try await provider.readForIndex(toReadURLs)
+            guard !Task.isCancelled else { return }
+
+            let mtimeByPath = Dictionary(flat.map { ($0.path, $0.mtime) }, uniquingKeysWith: { _, b in b })
+            let upserts: [(path: String, title: String, mtime: Date, body: String)] =
+                toReadURLs.compactMap { url in
+                    guard let body = texts[url] else { return nil }
+                    let rel = Self.relativePath(of: url, under: root)
+                    let title = url.deletingPathExtension().lastPathComponent
+                    let mtime = mtimeByPath[rel] ?? Date()
+                    return (rel, title, mtime, body)
+                }
+
+            try await index.apply(upserts: upserts, deletes: toDelete)
+        } catch {
+            // Index sync is best-effort — a failure just means slightly stale results.
+        }
+    }
+
+    private func flattenNotes(_ node: VaultNode, root: URL) -> [(path: String, mtime: Date)] {
+        var result: [(String, Date)] = []
+        if !node.isDirectory {
+            result.append((Self.relativePath(of: node.url, under: root), node.modifiedAt ?? Date()))
+        }
+        for child in node.children ?? [] {
+            result.append(contentsOf: flattenNotes(child, root: root))
+        }
+        return result
+    }
+
+    // MARK: - Search
+
+    /// Debounced: call on every `searchQuery` change. Clears results immediately
+    /// when the query is empty; otherwise waits 200 ms before querying the index.
+    func runSearch() {
+        searchTask?.cancel()
+        guard isSearching else {
+            searchResults = []
+            return
+        }
+        let q = searchQuery
+        searchTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled, let self else { return }
+            await self.executeSearch(q)
+        }
+    }
+
+    private func executeSearch(_ q: String) async {
+        guard let index = searchIndex else { searchResults = []; return }
+        do {
+            searchResults = try await index.query(q)
+        } catch {
+            searchResults = []
+        }
+    }
+
+    /// Resolve a search hit to a vault node and open it in the editor.
+    func openHit(_ hit: SearchHit) {
+        guard let root = rootURL else { return }
+        let url = root.appendingPathComponent(hit.relativePath)
+        if let node = findNode(url, in: tree) { open(node) }
     }
 
     // MARK: - Opening / creating notes
