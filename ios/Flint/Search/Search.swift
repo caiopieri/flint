@@ -129,6 +129,19 @@ actor SearchIndex {
         }
     }
 
+    // MARK: - Tag source
+
+    /// Returns all (path, body) pairs from the index. Used by VaultStore to
+    /// re-hydrate the in-memory tag map on relaunch without re-reading the vault.
+    func tagSource() async throws -> [(path: String, body: String)] {
+        try await queue.read { db in
+            try Row.fetchAll(db, sql: "SELECT path, body FROM notes").compactMap { row in
+                guard let path: String = row[0], let body: String = row[1] else { return nil }
+                return (path, body)
+            }
+        }
+    }
+
     // MARK: - Query sanitization
 
     /// Rewrites `raw` as a safe FTS5 prefix query: each whitespace-separated token

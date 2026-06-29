@@ -52,12 +52,30 @@ final class iCloudDriveProvider: SyncProvider {
         }.value
     }
 
+    func readData(_ url: URL) async throws -> Data {
+        try await Task.detached(priority: .userInitiated) {
+            try VaultFileSystem.readData(at: url)
+        }.value
+    }
+
+    func writeData(_ data: Data, to url: URL) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            try VaultFileSystem.writeData(data, to: url)
+        }.value
+    }
+
     func createNote(in directory: URL, baseName: String) async throws -> URL {
         let cache = baseCache
         return try await Task.detached(priority: .userInitiated) {
             let url = try VaultFileSystem.createNote(in: directory, baseName: baseName)
             cache.update("", for: url)   // brand-new file: empty common ancestor
             return url
+        }.value
+    }
+
+    func createInk(in directory: URL, baseName: String) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) {
+            try VaultFileSystem.createInk(in: directory, baseName: baseName)
         }.value
     }
 

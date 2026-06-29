@@ -23,10 +23,10 @@ enum VaultFileSystem {
         }
     }
 
-    /// Recursively build the folder/`.md` tree under `root`. Hidden entries
+    /// Recursively build the folder/`.md`/`.ink` tree under `root`. Hidden entries
     /// (dotfiles, `.obsidian`, `.trash`, …) are skipped. Folders are kept even
-    /// when empty (they exist on disk; files-as-truth) — only non-`.md` files are
-    /// omitted, since Phase 1 has no viewer for them.
+    /// when empty (they exist on disk; files-as-truth) — only unsupported files
+    /// are omitted, since Phase 1 has no viewer for them.
     static func buildTree(root: URL) throws -> VaultNode {
         try coordinatedRead(root) { url in
             try node(at: url, isRoot: true) ?? VaultNode(
@@ -41,6 +41,10 @@ enum VaultFileSystem {
         try coordinatedRead(url) { try String(contentsOf: $0, encoding: .utf8) }
     }
 
+    static func readData(at url: URL) throws -> Data {
+        try coordinatedRead(url) { try Data(contentsOf: $0) }
+    }
+
     /// Create a new empty `.md` note in `directory`, picking a non-colliding name
     /// ("Untitled.md", "Untitled 1.md", …). Returns the created file's URL.
     static func createNote(in directory: URL, baseName: String = "Untitled") throws -> URL {
@@ -52,6 +56,18 @@ enum VaultFileSystem {
             counter += 1
         }
         try writeNote("", to: candidate)
+        return candidate
+    }
+
+    static func createInk(in directory: URL, baseName: String = "Drawing") throws -> URL {
+        let fileManager = FileManager.default
+        var candidate = directory.appendingPathComponent("\(baseName).ink")
+        var counter = 1
+        while fileManager.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(baseName) \(counter).ink")
+            counter += 1
+        }
+        try writeData(try InkDocument().encoded(), to: candidate)
         return candidate
     }
 
@@ -84,6 +100,18 @@ enum VaultFileSystem {
         var thrown: Error?
         coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &coordError) { dst in
             do { try text.data(using: .utf8)?.write(to: dst, options: .atomic) }
+            catch { thrown = error }
+        }
+        if let coordError { throw VaultError.coordination(coordError) }
+        if let thrown { throw thrown }
+    }
+
+    static func writeData(_ data: Data, to url: URL) throws {
+        let coordinator = NSFileCoordinator()
+        var coordError: NSError?
+        var thrown: Error?
+        coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &coordError) { dst in
+            do { try data.write(to: dst, options: .atomic) }
             catch { thrown = error }
         }
         if let coordError { throw VaultError.coordination(coordError) }
@@ -180,7 +208,7 @@ enum VaultFileSystem {
         let createdAt = values?.creationDate
 
         if !isDir {
-            guard url.pathExtension.lowercased() == "md" else { return nil }
+            guard ["md", "ink"].contains(url.pathExtension.lowercased()) else { return nil }
             return VaultNode(
                 url: url,
                 name: url.deletingPathExtension().lastPathComponent,

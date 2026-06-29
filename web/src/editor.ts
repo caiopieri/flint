@@ -19,6 +19,7 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { GFM } from "@lezer/markdown";
 import { livePreview, flintMarkdownExtensions } from "./livePreview";
+import { inkEmbed, inkMarkdownExtensions } from "./inkEmbed";
 
 const flintTheme = EditorView.theme({
   "&": {
@@ -85,9 +86,10 @@ export function createEditor(parent: HTMLElement, onChange: (text: string) => vo
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         // GFM gives task lists / strikethrough; flintMarkdownExtensions add
         // [[wikilinks]], ==highlight==, and #tags for Live Preview.
-        markdown({ extensions: [GFM, ...flintMarkdownExtensions] }),
+        markdown({ extensions: [GFM, ...inkMarkdownExtensions, ...flintMarkdownExtensions] }),
         syntaxHighlighting(flintHighlight),
         livePreview(),
+        inkEmbed(),
         flintTheme,
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applying) onChange(view.state.doc.toString());

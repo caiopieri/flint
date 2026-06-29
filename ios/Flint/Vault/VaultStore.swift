@@ -14,6 +14,7 @@ final class VaultStore {
     private(set) var tree: VaultNode?
     private(set) var selection: VaultNode?
     private(set) var recents: [RecentVaultRef] = []
+    private(set) var inkRequest: String?
     var errorMessage: String?
 
     /// The selected note's path relative to the vault root — what the editor
@@ -80,6 +81,42 @@ final class VaultStore {
     private(set) var searchResults: [SearchHit] = []
     /// True while the user has typed a non-empty search query.
     var isSearching: Bool { !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    // MARK: - Tags (T5)
+
+    /// path → sorted tag list, built incrementally from the index. Rehydrated from
+    /// the FTS body column on relaunch so re-crawling the vault is never needed.
+    private(set) var tagsByPath: [String: [String]] = [:]
+    /// All unique tags across the vault, deduplicated case-insensitively, sorted.
+    var allTags: [String] {
+        var seen: [String: String] = [:]
+        for tags in tagsByPath.values {
+            for tag in tags {
+                let key = tag.lowercased()
+                if seen[key] == nil { seen[key] = tag }
+            }
+        }
+        return seen.values.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+    /// The currently filtered tag. Exclusive with `searchQuery` (D5).
+    private(set) var activeTag: String?
+    /// Notes that carry `activeTag`, ordered by the current `sortOrder`.
+    var notesForActiveTag: [VaultNode] {
+        guard let tag = activeTag, let root = rootURL, let treeRoot = tree else { return [] }
+        let nodes = tagsByPath.compactMap { (path, tags) -> VaultNode? in
+            guard tags.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) else { return nil }
+            return findNode(root.appendingPathComponent(path), in: treeRoot)
+        }
+        return sortedChildren(nodes)
+    }
+
+    /// Select (or deselect) a tag filter. Clears the search query (D5).
+    func selectTag(_ tag: String) {
+        searchTask?.cancel()
+        searchQuery = ""
+        searchResults = []
+        activeTag = (activeTag?.caseInsensitiveCompare(tag) == .orderedSame) ? nil : tag
+    }
 
     private let bookmarkKey = "flint.vault.bookmark"
     private let recentsKey = "flint.vault.recents"
@@ -199,6 +236,8 @@ final class VaultStore {
         searchIndex = nil   // closes the DatabaseQueue
         searchQuery = ""
         searchResults = []
+        tagsByPath = [:]
+        activeTag = nil
         watch?.cancel()
         watch = nil
         provider = nil
@@ -308,6 +347,24 @@ final class VaultStore {
                 }
 
             try await index.apply(upserts: upserts, deletes: toDelete)
+            guard !Task.isCancelled else { return }
+
+            // Incremental tag update from the just-indexed content.
+            for path in toDelete { tagsByPath.removeValue(forKey: path) }
+            for item in upserts { tagsByPath[item.path] = Frontmatter.tags(in: item.body) }
+
+            // Relaunch: index already had data but nothing changed → tag map is still
+            // empty (no upserts ran). Rehydrate from the stored bodies off-main.
+            if tagsByPath.isEmpty && !flat.isEmpty {
+                let rows = try await index.tagSource()
+                let map = await Task.detached(priority: .utility) {
+                    var result: [String: [String]] = [:]
+                    for (path, body) in rows { result[path] = Frontmatter.tags(in: body) }
+                    return result
+                }.value
+                guard !Task.isCancelled else { return }
+                tagsByPath = map
+            }
         } catch {
             // Index sync is best-effort — a failure just means slightly stale results.
         }
@@ -315,7 +372,7 @@ final class VaultStore {
 
     private func flattenNotes(_ node: VaultNode, root: URL) -> [(path: String, mtime: Date)] {
         var result: [(String, Date)] = []
-        if !node.isDirectory {
+        if !node.isDirectory, node.url.pathExtension.lowercased() == "md" {
             result.append((Self.relativePath(of: node.url, under: root), node.modifiedAt ?? Date()))
         }
         for child in node.children ?? [] {
@@ -328,8 +385,10 @@ final class VaultStore {
 
     /// Debounced: call on every `searchQuery` change. Clears results immediately
     /// when the query is empty; otherwise waits 200 ms before querying the index.
+    /// A non-empty query clears the active tag (D5: search and tag filter are exclusive).
     func runSearch() {
         searchTask?.cancel()
+        if isSearching { activeTag = nil }
         guard isSearching else {
             searchResults = []
             return
@@ -379,6 +438,54 @@ final class VaultStore {
         try await provider.write(text, to: url)
     }
 
+    func inkLoad(_ relativePath: String) async throws -> InkDocument {
+        guard let provider, let url = resolve(relativePath) else { throw VaultStoreError.noVault }
+        return try InkDocument.decode(try await provider.readData(url))
+    }
+
+    func inkSave(_ relativePath: String, _ doc: InkDocument) async throws {
+        guard let provider, let url = resolve(relativePath) else { throw VaultStoreError.noVault }
+        try await provider.writeData(try doc.encoded(), to: url)
+    }
+
+    func requestInk(_ target: String) {
+        guard let path = resolveInkTarget(target) else {
+            errorMessage = "Drawing not found: \(target)"
+            return
+        }
+        inkRequest = path
+    }
+
+    func clearInkRequest() {
+        inkRequest = nil
+    }
+
+    func resolveInkTarget(_ target: String) -> String? {
+        let trimmed = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let root = rootURL, let tree else { return nil }
+
+        let normalized = trimmed.hasSuffix(".ink") ? trimmed : "\(trimmed).ink"
+        if normalized.contains("/") {
+            let url = root.appendingPathComponent(normalized)
+            guard let node = findNode(url, in: tree), node.url.pathExtension.lowercased() == "ink" else { return nil }
+            return Self.relativePath(of: node.url, under: root)
+        }
+
+        let matches = inkNodes(in: tree).filter { $0.url.lastPathComponent == normalized }
+        guard matches.count == 1, let match = matches.first else { return nil }
+        return Self.relativePath(of: match.url, under: root)
+    }
+
+    func inkThumbnailPNG(_ target: String) async -> Data? {
+        guard let provider, let path = resolveInkTarget(target), let url = resolve(path) else { return nil }
+        do {
+            let doc = try InkDocument.decode(try await provider.readData(url))
+            return try InkRenderer.thumbnailPNG(for: doc, maxSize: CGSize(width: 320, height: 220), scale: 2)
+        } catch {
+            return nil
+        }
+    }
+
     /// Create a new note at the vault root, then select and open it.
     func createNote() async {
         guard let provider, let root = rootURL else { return }
@@ -388,6 +495,17 @@ final class VaultStore {
             if let node = findNode(url, in: tree) { open(node) }
         } catch {
             errorMessage = "Couldn't create a note: \(error.localizedDescription)"
+        }
+    }
+
+    func createDrawing() async {
+        guard let provider, let root = rootURL else { return }
+        do {
+            let url = try await provider.createInk(in: root, baseName: "Drawing")
+            await reload()
+            if let node = findNode(url, in: tree) { open(node) }
+        } catch {
+            errorMessage = "Couldn't create a drawing: \(error.localizedDescription)"
         }
     }
 
@@ -444,6 +562,17 @@ final class VaultStore {
 
     /// Find a node by its URL anywhere in the current tree (used by drag-drop).
     func node(at url: URL) -> VaultNode? { findNode(url, in: tree) }
+
+    private func inkNodes(in node: VaultNode) -> [VaultNode] {
+        var result: [VaultNode] = []
+        if !node.isDirectory, node.url.pathExtension.lowercased() == "ink" {
+            result.append(node)
+        }
+        for child in node.children ?? [] {
+            result.append(contentsOf: inkNodes(in: child))
+        }
+        return result
+    }
 
     private func findNode(_ url: URL, in node: VaultNode?) -> VaultNode? {
         guard let node else { return nil }

@@ -68,6 +68,20 @@ final class WebBridge: NSObject, WKScriptMessageHandlerWithReply {
                 return (nil, "doc.save failed: \(error.localizedDescription)")
             }
 
+        case "ink.thumbnail":
+            guard let target = payload?["target"] as? String else {
+                return (nil, "ink.thumbnail: missing target")
+            }
+            let data = await vault.inkThumbnailPNG(target)
+            return (["png": data?.base64EncodedString() ?? "", "found": data != nil], nil)
+
+        case "ink.open":
+            guard let target = payload?["target"] as? String else {
+                return (nil, "ink.open: missing target")
+            }
+            vault.requestInk(target)
+            return (["ok": true], nil)
+
         default:
             return (nil, "Unknown bridge method: \(method)")
         }

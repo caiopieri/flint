@@ -11,10 +11,22 @@ struct VaultNavigator: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
-        if sizeClass == .compact {
-            CompactNavigator(vault: vault, chooseVault: chooseVault)
-        } else {
-            RegularNavigator(vault: vault, chooseVault: chooseVault)
+        Group {
+            if sizeClass == .compact {
+                CompactNavigator(vault: vault, chooseVault: chooseVault)
+            } else {
+                RegularNavigator(vault: vault, chooseVault: chooseVault)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { vault.inkRequest != nil },
+            set: { if !$0 { vault.clearInkRequest() } }
+        )) {
+            if let path = vault.inkRequest {
+                NavigationStack {
+                    InkScreen(vault: vault, relativePath: path)
+                }
+            }
         }
     }
 }
@@ -164,12 +176,18 @@ private struct SidebarContent: View {
             header
             FlintColor.border.frame(height: 1)
             searchBar
+            if !vault.allTags.isEmpty {
+                tagChipsRow
+                FlintColor.borderSubtle.frame(height: 1)
+            }
             if vault.isSearching {
                 if vault.searchResults.isEmpty {
                     searchEmptyState
                 } else {
                     SearchResultsList(vault: vault, onSelectNote: onSelectNote)
                 }
+            } else if vault.activeTag != nil {
+                TagFilterList(vault: vault, onSelectNote: onSelectNote)
             } else if vault.tree?.children?.isEmpty ?? true {
                 emptyState
             } else {
@@ -177,6 +195,23 @@ private struct SidebarContent: View {
             }
         }
         .background(FlintColor.surface)
+    }
+
+    private var tagChipsRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: FlintSpace.s2) {
+                ForEach(vault.allTags, id: \.self) { tag in
+                    TagChip(
+                        label: tag,
+                        isActive: vault.activeTag?.caseInsensitiveCompare(tag) == .orderedSame
+                    ) {
+                        vault.selectTag(tag)
+                    }
+                }
+            }
+            .padding(.horizontal, FlintSpace.s4)
+            .padding(.vertical, FlintSpace.s2)
+        }
     }
 
     private var searchBar: some View {
@@ -278,6 +313,14 @@ private struct SidebarContent: View {
             .foregroundStyle(FlintColor.textSecondary)
             .buttonStyle(.flintPressable)
 
+            Button("New drawing", systemImage: "pencil.tip") {
+                onSelectNote?()
+                Task { await vault.createDrawing() }
+            }
+            .labelStyle(.iconOnly)
+            .foregroundStyle(FlintColor.textSecondary)
+            .buttonStyle(.flintPressable)
+
             Button("New note", systemImage: "square.and.pencil") {
                 onSelectNote?()
                 Task { await vault.createNote() }
@@ -304,6 +347,72 @@ private struct SidebarContent: View {
             .frame(maxWidth: 240)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Tag chip
+
+private struct TagChip: View {
+    let label: String
+    let isActive: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("#\(label)")
+                .font(.caption)
+                .foregroundStyle(FlintColor.accentText)
+                .padding(.horizontal, FlintSpace.s2)
+                .padding(.vertical, FlintSpace.s1)
+                .background(FlintColor.surfaceRaised)
+                .clipShape(RoundedRectangle(cornerRadius: FlintRadius.sm, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: FlintRadius.sm, style: .continuous)
+                        .stroke(isActive ? FlintColor.accent : Color.clear, lineWidth: 2)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Tag filter list
+
+private struct TagFilterList: View {
+    let vault: VaultStore
+    var onSelectNote: (() -> Void)?
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(vault.notesForActiveTag, id: \.id) { node in
+                    Button {
+                        onSelectNote?()
+                        vault.open(node)
+                    } label: {
+                        HStack(spacing: FlintSpace.s2) {
+                            Color.clear.frame(width: 10)
+                            Image(systemName: "doc.text")
+                                .foregroundStyle(FlintColor.textSecondary)
+                                .frame(width: 20)
+                            Text(node.name)
+                                .foregroundStyle(vault.selection?.id == node.id ? FlintColor.textPrimary : FlintColor.textSecondary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, FlintSpace.s4)
+                        .padding(.vertical, FlintSpace.s2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .background(vault.selection?.id == node.id
+                            ? ZStack(alignment: .leading) { FlintColor.surfaceRaised; FlintColor.accent.frame(width: 2) }
+                            : nil)
+                    }
+                    .buttonStyle(.flintRow(pressedFill: FlintColor.surfaceRaised))
+                }
+            }
+            .padding(.vertical, FlintSpace.s2)
+        }
+        .background(FlintColor.surface)
     }
 }
 
@@ -414,7 +523,7 @@ private struct VaultTreeList: View {
             }
             .frame(width: 10)
 
-            Image(systemName: node.isDirectory ? "folder" : "doc.text")
+            Image(systemName: iconName(for: node))
                 .foregroundStyle(FlintColor.textSecondary)
                 .frame(width: 20)
 
@@ -477,7 +586,7 @@ private struct VaultTreeList: View {
                 }
                 .frame(width: 10)
 
-                Image(systemName: node.isDirectory ? "folder" : "doc.text")
+                Image(systemName: iconName(for: node))
                     .foregroundStyle(FlintColor.textSecondary)
                     .frame(width: 20)
 
@@ -502,6 +611,11 @@ private struct VaultTreeList: View {
 
     private func isSelected(_ node: VaultNode) -> Bool {
         !node.isDirectory && node.id == vault.selection?.id
+    }
+
+    private func iconName(for node: VaultNode) -> String {
+        if node.isDirectory { return "folder" }
+        return node.url.pathExtension.lowercased() == "ink" ? "pencil.tip" : "doc.text"
     }
 
     @ViewBuilder
@@ -607,14 +721,19 @@ private struct NoteDetail: View {
     var body: some View {
         Group {
             if let selection = vault.selection {
-                EditorWebView(vault: vault, path: vault.selectedRelativePath)
-                    .background(FlintColor.bg)
-                    .navigationTitle(selection.name)
-                    .navigationBarTitleDisplayMode(.inline)
+                if selection.url.pathExtension.lowercased() == "ink",
+                   let path = vault.selectedRelativePath {
+                    InkScreen(vault: vault, relativePath: path)
+                } else {
+                    EditorWebView(vault: vault, path: vault.selectedRelativePath)
+                        .background(FlintColor.bg)
+                        .navigationTitle(selection.name)
+                        .navigationBarTitleDisplayMode(.inline)
+                }
             } else {
                 ZStack {
                     FlintColor.bg.ignoresSafeArea()
-                    ContentUnavailableView("Select a note", systemImage: "doc.text")
+                    ContentUnavailableView("Select a file", systemImage: "doc.text")
                 }
             }
         }

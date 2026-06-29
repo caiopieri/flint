@@ -1,101 +1,62 @@
-# Flint — Agent & Contributor Guide
+# AGENTS.md — Flint
 
-Flint is an open-source iOS/iPadOS note app: the depth of Obsidian (Markdown, local vault, plugins), native Apple Pencil handwriting, and local/cloud AI — privacy-first, local-first.
+> Fonte da verdade portável deste repo (Codex/Cursor/Claude Code). O `CLAUDE.md` é só um shim `@AGENTS.md`.
+> O núcleo universal (comportamento anti-bajulação, DoD, fluxo spec-kit, alocação de modelo) vem do
+> `~/.claude/CLAUDE.md` — **não repetir aqui.** Aqui mora só o que é específico do Flint. Manter enxuto.
+> Visão-norte do produto (o que o Flint é ponta a ponta): `Ideaverse/2. Pessoal/Flint.md` (fora do repo).
+> *Por quê* de cada escolha: `docs/DECISIONS.md` (ADRs). Engenharia: `docs/ARCHITECTURE.md`.
 
-This file is the entry point for any agent or contributor. **Read next:** `docs/ARCHITECTURE.md` (how it's built) and `docs/DECISIONS.md` (why, and what NOT to reintroduce). For anything visual, `docs/design/` is the design system (start at `docs/design/README.md`).
+## [QUENTE] O que é
 
----
+App de notas **open source, local-first**, para iOS/iPadOS (depois macOS/Windows via Electron, Android). Substitui o Obsidian onde ele limita: **tinta de qualidade GoodNotes dentro de um canvas conectado, com IA agêntica nativa.** Tratar como produto pessoal sério: nasce **T1** (MVP de uso próprio) e endurece para **T2** fatia a fatia antes de lançamento público.
 
-## Non-negotiable invariants
+## [QUENTE] Stack
 
-These override convenience. If a task conflicts with them, stop and flag it.
+- **App host:** SwiftUI (iOS 26.0 mínimo, Swift 6 com strict concurrency *complete*).
+- **Editor + runtime de plugins:** WKWebView carregando TypeScript (CodeMirror 6) via esquema **`flint://`** (`WKURLSchemeHandler`, nunca `file://`).
+- **Tinta:** PencilKit (`PKCanvasView`) — capacidade nativa.
+- **Busca:** SQLite **FTS5 via GRDB** — índice descartável, reconstruível. Nunca autoritativo.
+- **Sync:** protocolo `SyncProvider`; `iCloudDriveProvider` (default). Vault aberto por document picker + **security-scoped bookmark** (ADR-011); acesso via `NSFileCoordinator`/`NSFilePresenter`.
+- **IA local:** llama.cpp (Metal) base; avaliar MLX. **Core ML fora** do caminho LLM autoregressivo.
+- **Tokens:** `docs/design/tokens/tokens.json` → `scripts/gen-tokens.mjs` → `Tokens.swift` + `tokens.css` (gerados, gitignored).
+- **Build:** projeto gerado de `ios/project.yml` (XcodeGen); web empacotado com esbuild/npm e copiado pro bundle. Entrada: `make bootstrap`. **SwiftPM only** (sem CocoaPods/Carthage); deps mínimas.
 
-1. **Local-first.** The app works fully offline. **No Flint servers in the default path.**
-2. **`.md` files are the source of truth.** The vault is a directory of plain text files any tool (Obsidian, git) can read. **Every database is a disposable, rebuildable index — never the source of truth.**
-3. **Single-user, multi-device.** Offline iPhone/iPad conflict, not multi-person collaboration. Collaboration is an optional, future, opt-in mode and must not shape the base architecture.
-4. **Plugins are the spine.** Ink, Board, and Flows are first-party plugins. Do not treat the plugin system as a final-phase add-on.
-5. **Native where it must be; web only for editor + plugin runtime.** All file I/O, sync, low-latency UI, PencilKit, and local LLM inference are **Swift**. The WKWebView exists for the CodeMirror editor and the JS plugin runtime — nothing else.
-6. **Compute routing is explicit, never magic.** The user chooses where each AI task runs (local / cloud / their VPS) via Flows. Do not add hidden local-vs-cloud heuristics.
+## [QUENTE] Restrições duras (não negociar dentro de uma tarefa)
 
----
+- **`.md` é a fonte da verdade**; todo DB é índice descartável e reconstruível (ADR-001). Nunca tornar o DB autoritativo.
+- **Sem CRDT no app base** (ADR-002): conflito offline↔offline = 3-way merge + fallback `.conflict`. CRDT só no hub de replicação opcional futuro (ADR-003).
+- **Bridge JS↔Swift é a fronteira de segurança.** APIs **coarse e async**, envelope tipado `{ id, method, payload }` (`WKScriptMessageHandlerWithReply`). Nunca chatter per-keystroke/per-file (ADR-004/005).
+- **Webview só para editor + runtime de plugins.** Sync e IA são nativos Swift (ADR-004).
+- **`network` negado por padrão** para plugins; grant alto e por-plugin (ADR-007). **Sem rede no target do app na fatia atual** (privacy-first).
+- **Vault via security-scoped bookmark**, jamais um container iCloud próprio do Flint (ADR-011).
+- **Todo acesso a disco passa por `SyncProvider`** — sem `FileManager` espalhado.
+- Mudança de arquitetura é **tarefa própria com spec** — não mexer em estrutura de pastas/camadas/contratos no meio de outra tarefa.
 
-## The JS ↔ Native ↔ Bridge boundary
+## [QUENTE] Convenções deste projeto
 
-- **Webview (TS) owns:** Markdown editing (CodeMirror 6), plugin logic, Flows graph definition/orchestration, surface view-logic, UI panels.
-- **Native (Swift) owns:** vault I/O, search index, sync, PencilKit (Ink) rendering, local LLM execution, native-over-webview compositing.
-- **Bridge:** typed, async, two-way message channel. It is the **security boundary** — every `Flint.*` call is checked against declared plugin permissions.
-- **Performance rule:** bridge APIs are **coarse and async** (batched), never chatty. Push a cached read-model (e.g. metadata index) into the webview once instead of crossing the bridge per access.
+- Swift 6 strict concurrency; SwiftUI (UIKit só onde o nativo exige, ex.: PencilKit). TypeScript strict no webview.
+- Nenhuma cor/tamanho/tipo definido só de um lado: **tudo via `tokens.json`** (parity por construção, ADR-D03).
+- Tipografia nativa: New York (leitura) / SF Pro (UI) / SF Mono (código) — zero webfont (ADR-D04).
+- Ao terminar: rodar testes (`FlintTests`) + lint/type-check; cumprir o DoD do `~/.claude/CLAUDE.md`. **Nunca apagar teste sem autorização.**
+- 1 tarefa = 1 PR ≤ ~300 linhas. Escopo travado do Ink no MVP: **uma página, salvar, embed, abrir** — nada de canvas infinito/brushes/layers.
 
----
+## [MORNO] Segurança específica
 
-## Naming rules
+Seções de `docs/security-DoD.md` que se aplicam:
 
-- The handwriting feature is **Ink**. The note-linking spatial map is **Board**. The compute-orchestration graph is **Flows**.
-- **Never** name features "GoodNotes" or "n8n" in code, UI, or docs — those are trademarks used only as conversational north-stars. The category/functionality is free to build; the brand/code is not.
-- **Board uses the open JSON Canvas format** (jsoncanvas.org) for Obsidian interop.
+- [x] **Mobile / iOS** — entitlement `increased-memory-limit` (jetsam é o limite da IA local, ADR-009); ciclo do security-scoped bookmark (staleness/re-resolução); suspensão de geração longa em background.
+- [x] **Bot / entrada de LLM** — output do modelo é **dado, nunca instrução**; validar/tipar antes de tocar o vault; ação sensível pede confirmação. Conteúdo de terceiros (web embed, nota importada, plugin) é hostil até validado.
+- [ ] Banco / Postgres / Supabase — N/A (SQLite local, sem servidor multiusuário no base).
+- [ ] Web / e-commerce / pagamentos — N/A.
+- **Flows é superfície de segurança:** rodar workflow é rodar código → respeita o capability model e roda sandboxed (projetar quando Flows existir).
+- **Motor externo / controle físico (futuro, Jarvis):** conectar um motor externo é grant alto e explícito; com controle de casa, a fronteira protege a casa **física** — conteúdo/saída de LLM nunca dispara ação física, e ação física/sensível pede confirmação fora do canal. Flint conecta-se ao Jarvis (via MCP), não o contém.
 
----
+## [FRIO] Memória recuperável
 
-## Do NOT reintroduce (refuted in v0.1 — see docs/DECISIONS.md)
-
-- ❌ Core Data / SQLite as the source of truth. (It's a disposable search index only.)
-- ❌ Yjs CRDT in Phase 1-2, or any CRDT in the base app. (CRDT only lives inside the optional sync hub.)
-- ❌ Sync or AI logic inside the webview / a "shared TS core". (Both are native Swift.)
-- ❌ Automatic local/cloud AI routing heuristics. (Routing is explicit via Flows.)
-- ❌ "Runs a 3B model without overheating" as a goal. (Heat is fine; the wall is RAM/jetsam.)
-- ❌ Inline Pencil-in-text compositing for the MVP. (Ink MVP = a separate embedded page.)
-- ❌ Marketing/aiming for binary Obsidian plugin compatibility. (Own API, modeled on Obsidian's shape; simple plugins port by adaptation.)
-
----
-
-## Current focus
-
-**Phase 1 MVP = native editor + Ink, built as A → Ink** (not A-vs-B):
-
-- **1a (editor):** open the existing iCloud Obsidian vault, navigate, edit `.md` via CodeMirror, full-text search, frontmatter/tags, dark/light, iCloud Drive sync with `.conflict` handling. Design the bridge boundary now; **no public Plugin API yet.**
-- **1b (Ink):** native `PKCanvasView` page, 3-4 paper templates, save as its own file (PKDrawing + PNG/SVG), embed via `![[sketch.ink]]` (editor shows a thumbnail; tap opens the canvas).
-- **Ink scope is locked:** one page, save, embed, open. No infinite canvas, custom brushes, or layers in the MVP.
-
-The Plugin API is **extracted later**, with Ink/Board/Flows as its first consumers — don't design it in a vacuum.
-
-**The ordered, concrete plan + locked setup decisions (min iOS, Swift version, deps, bridge, vault access) live in [`docs/TASKS.md`](./docs/TASKS.md). Start there before writing any code.**
-
----
-
-## How to behave in this repo
-
-You are a senior iOS engineer. You are skeptical by default. You do not write code to please — you write code that is correct and scoped.
-
-**Before doing anything:**
-1. Read `AGENTS.md` (this file), `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, and `docs/TASKS.md` in full.
-2. Identify which phase we are in. Refuse to implement anything from a future phase without explicit approval.
-3. If a request conflicts with an invariant above, say so clearly before proceeding.
-
-**Rules:**
-- Ask one clarifying question at a time before writing code. Never assume scope.
-- If something "seems obvious", check the do-not-reintroduce list first.
-- If a task is vague ("make it better", "add AI"), refuse to start and ask what specifically is wanted.
-- Before creating a new file, verify it doesn't already exist.
-- Before choosing a technology, verify it isn't already decided in `docs/DECISIONS.md`.
-- Prefer the smallest change that satisfies the requirement. No gold-plating.
-- If a task would take more than ~30 min to implement, break it into steps and confirm each before proceeding.
-
-**When delegating to subagents:**
-- Every subagent must receive: current phase, the relevant invariants from this file, and an explicit out-of-scope list.
-- Never delegate without defining what the subagent must NOT do.
-
-**If asked to do something out of scope:**
-- Say explicitly: "This is Phase X work. We are in Phase Y."
-- Offer to log it as a future issue instead of implementing it now.
-
-**Tone:** direct, precise, no filler. Push back when something is wrong. Do not implement first and ask questions later.
-
----
-
-## Status
-
-**Phase 1a in progress.** Done: T0 (scaffold), T1 (vault), T2 (SyncProvider + iCloud conflicts), T3 (CodeMirror editor over the bridge), T4 (full-text search — SQLite FTS5 via GRDB), plus T8 (editor Live Preview) and T9 (vault file management). **Next: T5 — frontmatter, tags, theme.** Track concrete state in [`docs/TASKS.md`](./docs/TASKS.md) (checkboxes + PR refs); follow the module structure in `docs/ARCHITECTURE.md`.
-
----
-
-*Tool note: `CLAUDE.md` is a thin pointer to this file so Claude Code loads it automatically. This `AGENTS.md` is the canonical, tool-neutral guide.*
+- `docs/ARCHITECTURE.md` — fonte da verdade de engenharia (a fronteira bridge é a seção mais importante).
+- `docs/DECISIONS.md` — ADRs com **alternativas rejeitadas** (não reintroduzir silenciosamente).
+- `docs/design/` — sistema visual derivado do ícone (`COLOR`, `TYPOGRAPHY`, `INTERACTION`, `ACCESSIBILITY`, tokens).
+- `ROADMAP.md` — Now/Next/Later (a camada acima da spec).
+- `docs/constitution.md` — a lei do projeto; colar em `/speckit.constitution` após `specify init`.
+- **Specs por fatia:** `specs/NNN-nome/{spec,plan,tasks}.md` (spec-kit). Formato antigo arquivado em `docs/specs/_legacy/`.
+- `docs/TASKS.md` — tracker legado da Phase 1 (pré-spec-kit); o tracking de tarefas migra para `specs/NNN/tasks.md`.

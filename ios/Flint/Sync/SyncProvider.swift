@@ -41,8 +41,19 @@ protocol SyncProvider: Sendable {
     /// Write a note's text back (coordinated, atomic).
     func write(_ text: String, to url: URL) async throws
 
+    /// Lê os bytes crus de um arquivo do vault (binário: `.ink`, anexos futuros).
+    /// Coordenado. NÃO reconcilia conflito do iCloud (binário não tem merge de texto).
+    func readData(_ url: URL) async throws -> Data
+
+    /// Grava bytes crus (coordenado, atômico).
+    func writeData(_ data: Data, to url: URL) async throws
+
     /// Create a new empty `.md` note with a non-colliding name; returns its URL.
     func createNote(in directory: URL, baseName: String) async throws -> URL
+
+    /// Cria um novo arquivo `.ink` vazio (conteúdo = `InkDocument().encoded()`),
+    /// com nome não-colidente; retorna a URL criada.
+    func createInk(in directory: URL, baseName: String) async throws -> URL
 
     /// Create a new folder with a non-colliding name; returns its URL.
     func createFolder(in directory: URL, baseName: String) async throws -> URL
