@@ -15,6 +15,7 @@ final class VaultStore {
     private(set) var selection: VaultNode?
     private(set) var recents: [RecentVaultRef] = []
     private(set) var inkRequest: String?
+    private(set) var isLoadingTree = false
     var errorMessage: String?
 
     /// The selected note's path relative to the vault root — what the editor
@@ -290,10 +291,12 @@ final class VaultStore {
 
     func reload() async {
         guard let provider else { return }
+        isLoadingTree = true
         do {
             let newTree = try await provider.list()
             tree = newTree
             errorMessage = nil
+            isLoadingTree = false
             // Keep the open note selected if it still exists. We deliberately do
             // NOT re-read it here: the editor owns the live buffer, and clobbering
             // it on an external refresh would drop the user's unsaved edits. A
@@ -304,6 +307,7 @@ final class VaultStore {
             }
             scheduleIndexSync()
         } catch {
+            isLoadingTree = false
             errorMessage = "Couldn't read the vault: \(error.localizedDescription)"
         }
     }
@@ -438,14 +442,14 @@ final class VaultStore {
         try await provider.write(text, to: url)
     }
 
-    func inkLoad(_ relativePath: String) async throws -> InkDocument {
+    func notebookLoad(_ relativePath: String) async throws -> InkNotebook {
         guard let provider, let url = resolve(relativePath) else { throw VaultStoreError.noVault }
-        return try InkDocument.decode(try await provider.readData(url))
+        return try InkNotebook.decode(try await provider.readData(url))
     }
 
-    func inkSave(_ relativePath: String, _ doc: InkDocument) async throws {
+    func notebookSave(_ relativePath: String, _ notebook: InkNotebook) async throws {
         guard let provider, let url = resolve(relativePath) else { throw VaultStoreError.noVault }
-        try await provider.writeData(try doc.encoded(), to: url)
+        try await provider.writeData(try notebook.encoded(), to: url)
     }
 
     func requestInk(_ target: String) {
@@ -479,8 +483,9 @@ final class VaultStore {
     func inkThumbnailPNG(_ target: String) async -> Data? {
         guard let provider, let path = resolveInkTarget(target), let url = resolve(path) else { return nil }
         do {
-            let doc = try InkDocument.decode(try await provider.readData(url))
-            return try InkRenderer.thumbnailPNG(for: doc, maxSize: CGSize(width: 320, height: 220), scale: 2)
+            let notebook = try InkNotebook.decode(try await provider.readData(url))
+            guard let first = notebook.pages.first else { return nil }
+            return try InkRenderer.pagePNG(first, maxSize: CGSize(width: 320, height: 220), scale: 2)
         } catch {
             return nil
         }
@@ -491,21 +496,29 @@ final class VaultStore {
         guard let provider, let root = rootURL else { return }
         do {
             let url = try await provider.createNote(in: root, baseName: "Untitled")
-            await reload()
-            if let node = findNode(url, in: tree) { open(node) }
+            let node = optimisticFileNode(url)
+            insertOptimisticRootChild(node)
+            open(node)
+            scheduleReload()
         } catch {
             errorMessage = "Couldn't create a note: \(error.localizedDescription)"
         }
     }
 
     func createDrawing() async {
+        await createNotebook()
+    }
+
+    func createNotebook() async {
         guard let provider, let root = rootURL else { return }
         do {
-            let url = try await provider.createInk(in: root, baseName: "Drawing")
-            await reload()
-            if let node = findNode(url, in: tree) { open(node) }
+            let url = try await provider.createInk(in: root, baseName: "Notebook")
+            let node = optimisticFileNode(url)
+            insertOptimisticRootChild(node)
+            open(node)
+            scheduleReload()
         } catch {
-            errorMessage = "Couldn't create a drawing: \(error.localizedDescription)"
+            errorMessage = "Couldn't create a notebook: \(error.localizedDescription)"
         }
     }
 
@@ -513,8 +526,16 @@ final class VaultStore {
     func createFolder() async {
         guard let provider, let root = rootURL else { return }
         do {
-            _ = try await provider.createFolder(in: root, baseName: "New Folder")
-            await reload()
+            let url = try await provider.createFolder(in: root, baseName: "New Folder")
+            insertOptimisticRootChild(VaultNode(
+                url: url,
+                name: url.lastPathComponent,
+                isDirectory: true,
+                modifiedAt: nil,
+                createdAt: nil,
+                children: []
+            ))
+            scheduleReload()
         } catch {
             errorMessage = "Couldn't create a folder: \(error.localizedDescription)"
         }
@@ -572,6 +593,26 @@ final class VaultStore {
             result.append(contentsOf: inkNodes(in: child))
         }
         return result
+    }
+
+    private func optimisticFileNode(_ url: URL) -> VaultNode {
+        VaultNode(
+            url: url,
+            name: url.deletingPathExtension().lastPathComponent,
+            isDirectory: false,
+            modifiedAt: Date(),
+            createdAt: Date(),
+            children: nil
+        )
+    }
+
+    private func insertOptimisticRootChild(_ node: VaultNode) {
+        guard var root = tree else { return }
+        var children = root.children ?? []
+        children.removeAll { $0.url == node.url }
+        children.append(node)
+        root.children = children
+        tree = root
     }
 
     private func findNode(_ url: URL, in node: VaultNode?) -> VaultNode? {

@@ -5,8 +5,8 @@ import XCTest
 
 final class InkRendererTests: XCTestCase {
     func testEmptyDrawingProducesPNG() throws {
-        let png = try InkRenderer.thumbnailPNG(
-            for: InkDocument(),
+        let png = try InkRenderer.pagePNG(
+            InkNotebook.Page(),
             maxSize: CGSize(width: 256, height: 256),
             scale: 2
         )
@@ -17,10 +17,10 @@ final class InkRendererTests: XCTestCase {
 
     func testStrokeDrawingProducesPNG() throws {
         let drawing = PKDrawing(strokes: [stroke()])
-        let doc = InkDocument(paper: .blank, drawingData: drawing.dataRepresentation())
+        let page = InkNotebook.Page(paper: .blank, drawingData: drawing.dataRepresentation())
 
-        let png = try InkRenderer.thumbnailPNG(
-            for: doc,
+        let png = try InkRenderer.pagePNG(
+            page,
             maxSize: CGSize(width: 256, height: 256),
             scale: 2
         )
