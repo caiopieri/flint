@@ -55,3 +55,4 @@ ios/Flint/Resources/web/*
 # rebuilt by scripts/gen-tokens.mjs — see docs/design/README.md)
 ios/Flint/App/Tokens.swift
 web/src/tokens.css
+.vercel

@@ -496,24 +496,41 @@ footer{
 }
 @media (max-width:900px){
   .nav-links{display:none}
-  .phone{width:280px;height:574px;border-radius:48px}
-  .viewport{border-radius:36px}
-  .hero-copy{top:12vh;left:24px;right:24px}
-  .hero-sub{left:24px;right:24px;width:auto;bottom:7vh}
+  nav{padding:10px 16px;gap:12px}
+  .nav-right .btn-spark{display:none}  /* hero already carries the CTA */
+  .brand{font-size:18px}
+  .brand img{width:34px;height:34px}
+  .phone{width:250px;height:513px;border-radius:44px;padding:11px}
+  .phone::after{top:20px;width:88px;height:26px}
+  .viewport{border-radius:34px}
+  .statusbar{padding:16px 20px 6px}
+  .hero-copy{top:11vh;left:24px;right:24px}
+  .hero-sub{left:24px;right:24px;width:auto;bottom:132px}
+  .hero-sub p{font-size:15.5px;margin-bottom:16px}
+  /* scene copy gets a scrim so it stays legible over the phone */
   .copy{
-    width:min(520px,calc(100vw - 48px));
+    width:min(480px,calc(100vw - 32px));
     left:50% !important; right:auto !important;
-    top:auto; bottom:24px; transform:translate(-50%,0);
+    top:auto; bottom:12px; transform:translate(-50%,0);
     text-align:center;
+    padding:16px 18px 14px;
+    background:color-mix(in srgb,var(--warm-900) 82%,transparent);
+    -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+    border:1px solid var(--border-subtle); border-radius:var(--r-lg);
   }
-  .copy p{margin:0 auto}
-  .copy h2{font-size:clamp(28px,7.5vw,38px)}
-  .rail{right:14px}
+  .copy .kicker{margin-bottom:8px}
+  .copy h2{font-size:clamp(22px,6vw,30px);margin-bottom:8px}
+  .copy p{margin:0 auto;font-size:14px}
+  .ghost{font-size:clamp(70px,18vw,120px)}
+  .rail{right:12px}
   .cue{display:none}
   .steps,.grid4{grid-template-columns:1fr}
   section.flat{padding:90px 24px}
   .tl-track{height:380px}
   .tl-item{width:190px}
+}
+@media (max-width:900px) and (max-height:700px){
+  .phone{width:220px;height:451px}
 }
 
 @media (prefers-reduced-motion:reduce){
@@ -1229,15 +1246,17 @@ if (LANG === 'pt') setLang('pt');
 
     // phone: peek → rise → straighten
     const e = smooth(u + 1);
-    const phoneH = mobile() ? 574 : 696;
-    const peekY = (vh/2) + (phoneH * 0.47) - (reduced ? vh*0.35 : 148);
+    const m = mobile();
+    const phoneH = phoneWrap.firstElementChild.offsetHeight || 696;
+    const rest = m ? 0.58 : 0.47;  // rests higher on mobile: room for the copy scrim
+    const peekY = (vh/2) + (phoneH * rest) - (reduced ? vh*0.35 : (m ? 106 : 148));
     const offY = (1 - e) * peekY;
     const rot  = (1 - e) * -10;
     phoneWrap.style.transform =
-      `translate(-50%, calc(-47% + ${offY}px)) rotate(${rot}deg)`;
+      `translate(-50%, calc(-${rest*100}% + ${offY}px)) rotate(${rot}deg)`;
 
-    // hero copy
-    const heroOut = smooth((u + 0.55) / 0.5);
+    // hero copy — on mobile it fades earlier, before the phone reaches it
+    const heroOut = m ? smooth((u + 0.8) / 0.45) : smooth((u + 0.55) / 0.5);
     const heroOp = 1 - heroOut;
     heroCopy.style.opacity = heroSub.style.opacity = heroAside.style.opacity = heroOp;
     heroCopy.style.transform  = `translateY(${heroOut * -70}px)`;
