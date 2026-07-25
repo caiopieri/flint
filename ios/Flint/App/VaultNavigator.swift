@@ -155,6 +155,9 @@ private struct CompactNavigator: View {
         }
         .background(FlintColor.surface.ignoresSafeArea())
         .onAppear { if vault.selection == nil { isOpen = true } }
+        .onChange(of: vault.selection?.id) { _, selectedID in
+            if selectedID != nil { setOpen(false) }
+        }
     }
 
     private func setOpen(_ open: Bool) {
@@ -188,6 +191,8 @@ private struct SidebarContent: View {
                 }
             } else if vault.activeTag != nil {
                 TagFilterList(vault: vault, onSelectNote: onSelectNote)
+            } else if vault.tree == nil || vault.isLoadingTree && (vault.tree?.children?.isEmpty ?? true) {
+                loadingState
             } else if vault.tree?.children?.isEmpty ?? true {
                 emptyState
             } else {
@@ -215,7 +220,7 @@ private struct SidebarContent: View {
     }
 
     private var searchBar: some View {
-        HStack(spacing: FlintSpace.s2) {
+        HStack(spacing: FlintSpace.s3) {
             Image(systemName: "magnifyingglass")
                 .font(.subheadline)
                 .foregroundStyle(FlintColor.textMuted)
@@ -256,6 +261,19 @@ private struct SidebarContent: View {
         VStack(spacing: FlintSpace.s2) {
             Spacer()
             Text("No results")
+                .font(.subheadline)
+                .foregroundStyle(FlintColor.textSecondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var loadingState: some View {
+        VStack(spacing: FlintSpace.s3) {
+            Spacer()
+            ProgressView()
+                .tint(FlintColor.accent)
+            Text("Loading vault")
                 .font(.subheadline)
                 .foregroundStyle(FlintColor.textSecondary)
             Spacer()
