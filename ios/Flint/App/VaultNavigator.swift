@@ -313,9 +313,9 @@ private struct SidebarContent: View {
             .foregroundStyle(FlintColor.textSecondary)
             .buttonStyle(.flintPressable)
 
-            Button("New drawing", systemImage: "pencil.tip") {
+            Button("New notebook", systemImage: "book") {
                 onSelectNote?()
-                Task { await vault.createDrawing() }
+                Task { await vault.createNotebook() }
             }
             .labelStyle(.iconOnly)
             .foregroundStyle(FlintColor.textSecondary)

@@ -55,11 +55,11 @@ enum VaultFileSystem {
             candidate = directory.appendingPathComponent("\(baseName) \(counter).md")
             counter += 1
         }
-        try writeNote("", to: candidate)
+        try createFile(Data(), at: candidate)
         return candidate
     }
 
-    static func createInk(in directory: URL, baseName: String = "Drawing") throws -> URL {
+    static func createInk(in directory: URL, baseName: String = "Notebook") throws -> URL {
         let fileManager = FileManager.default
         var candidate = directory.appendingPathComponent("\(baseName).ink")
         var counter = 1
@@ -67,7 +67,7 @@ enum VaultFileSystem {
             candidate = directory.appendingPathComponent("\(baseName) \(counter).ink")
             counter += 1
         }
-        try writeData(try InkDocument().encoded(), to: candidate)
+        try createFile(try InkNotebook().encoded(), at: candidate)
         return candidate
     }
 
@@ -118,17 +118,18 @@ enum VaultFileSystem {
         if let thrown { throw thrown }
     }
 
-    /// Rename a note or folder in place. For notes the `.md` extension is kept
-    /// regardless of what the user typed (the tree shows the bare stem). Returns
-    /// the new URL. Throws `.nameInUse` rather than clobbering a sibling.
+    /// Rename a note, notebook, or folder in place. For files the existing
+    /// extension is preserved regardless of what the user typed. Returns the new
+    /// URL. Throws `.nameInUse` rather than clobbering a sibling.
     static func rename(_ url: URL, to newBaseName: String) throws -> URL {
         let trimmed = newBaseName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains("/") else { throw VaultError.invalidName }
         let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
         let dir = url.deletingLastPathComponent()
+        let fileExtension = url.pathExtension
         let target = isDir
             ? dir.appendingPathComponent(trimmed)
-            : dir.appendingPathComponent("\(trimmed).md")
+            : dir.appendingPathComponent(trimmed).appendingPathExtension(fileExtension)
         if target == url { return url }
         return try coordinatedMove(from: url, to: target)
     }
@@ -183,6 +184,20 @@ enum VaultFileSystem {
         if let coordError { throw VaultError.coordination(coordError) }
         if let thrown { throw thrown }
         return dst
+    }
+
+    private static func createFile(_ data: Data, at url: URL) throws {
+        let directory = url.deletingLastPathComponent()
+        let coordinator = NSFileCoordinator()
+        var coordError: NSError?
+        var thrown: Error?
+        coordinator.coordinate(writingItemAt: directory, options: .forMerging, error: &coordError) { coordinatedDirectory in
+            let destination = coordinatedDirectory.appendingPathComponent(url.lastPathComponent, isDirectory: false)
+            do { try data.write(to: destination, options: .atomic) }
+            catch { thrown = error }
+        }
+        if let coordError { throw VaultError.coordination(coordError) }
+        if let thrown { throw thrown }
     }
 
     private static func coordinatedRead<T>(_ url: URL, _ body: (URL) throws -> T) throws -> T {

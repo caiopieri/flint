@@ -70,6 +70,23 @@ struct FlintPressableButtonStyle: ButtonStyle {
     }
 }
 
+struct FlintIconButtonStyle: ButtonStyle {
+    var scale: CGFloat = 0.96
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    func makeBody(configuration: Configuration) -> some View {
+        let size: CGFloat = horizontalSizeClass == .compact ? 46 : 52
+        let iconSize: CGFloat = horizontalSizeClass == .compact ? 22 : 24
+        PressableSurface(isPressed: configuration.isPressed, scale: scale) {
+            configuration.label
+                .font(.system(size: iconSize, weight: .medium))
+                .frame(width: size, height: size)
+                .contentShape(Rectangle())
+                .opacity(configuration.isPressed ? 0.72 : 1)
+        }
+    }
+}
+
 extension ButtonStyle where Self == FlintPrimaryButtonStyle {
     static var flintPrimary: FlintPrimaryButtonStyle { FlintPrimaryButtonStyle() }
 }
@@ -81,6 +98,10 @@ extension ButtonStyle where Self == FlintPressableButtonStyle {
     static func flintRow(pressedFill: Color) -> FlintPressableButtonStyle {
         FlintPressableButtonStyle(scale: 1, pressedFill: pressedFill)
     }
+}
+
+extension ButtonStyle where Self == FlintIconButtonStyle {
+    static var flintIcon: FlintIconButtonStyle { FlintIconButtonStyle() }
 }
 
 extension View {
