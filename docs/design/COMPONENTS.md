@@ -65,7 +65,7 @@ Follows system appearance by default (dark-first identity, but respects the OS).
 
 ## Ink — canvas  · T6
 
-Native `PKCanvasView`. Scope-locked: one page, save, embed, open (ADR-008). No infinite canvas/brushes/layers.
+Native `PKCanvasView` (which is a `UIScrollView` → zoom/pan for free). Scope: a multi-page **notebook** — pages, per-page paper, navigation, thumbnails/reorder, embed (ADR-012). Out: PDF annotation (Ink 002), lasso, custom brushes beyond `PKToolPicker`, infinite canvas, inline-in-text compositing.
 
 - **Canvas background:** `paper-background`; rule lines/dots in `paper-rule` (faint).
 - **Paper templates (3–4):** `blank`, `lined`, `grid`, `dotted`. Rule spacing on the 4pt grid (e.g. lined = 32pt rhythm). Templates are a background layer; strokes draw above.

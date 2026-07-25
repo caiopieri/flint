@@ -1,5 +1,7 @@
 # Flint — Implementation Tasks
 
+> ⚠️ **LEGADO (pré-spec-kit).** Este tracker é da fase antiga e fica só como histórico. O processo agora é o spec-kit; a fatia ativa vive em `specs/001-ink-canvas/HANDOFF.md`, governada pela `docs/constitution.md`. Onde este arquivo disser "Ink MVP = one page", leia **caderno multi-página (ADR-012)**. Em conflito, valem ADR/constitution/handoff — não este arquivo.
+
 The concrete, ordered plan for building the **Phase 1 MVP**. Read [`../AGENTS.md`](../AGENTS.md) and [`ARCHITECTURE.md`](./ARCHITECTURE.md) first — this file assumes those invariants and the boundary.
 
 ## How to work through this

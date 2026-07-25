@@ -20,8 +20,9 @@ muda, edita-se a spec, nunca se improvisa no código.
 
 PRINCÍPIO II — Escopo é lei. Toda spec declara escopo dentro E fora explícitos. O agente não
 infla a tarefa. Over-engineering é violação: a abstração que ninguém pediu não entra. (No Flint
-isso é crítico — ex.: o Ink MVP é uma página, salvar, embed, abrir; canvas infinito/brushes/layers
-NÃO entram. Plugin API não é desenhada antes de ter 2-3 consumidores first-party — ADR-006.)
+isso é crítico — ex.: o Ink MVP é um caderno multi-página BÁSICO — páginas, papel por página, zoom,
+miniaturas, embed (ADR-012); ficam FORA: anotação de PDF, lasso, brushes customizados e compositing
+inline. Plugin API não é desenhada antes de ter 2-3 consumidores first-party — ADR-006.)
 
 PRINCÍPIO III — Tier define o rigor.
 T0 (spike, descartável): sem gate. T1 (MVP): segurança inegociável + teste no caminho crítico.

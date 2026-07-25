@@ -12,10 +12,10 @@ The **editor track ("A" from ADR-010) is substantially built**: opens a user-cho
 
 ## Now (in flight — max 1-2 slices)
 
-- [ ] **Ink MVP** — tier **T1**. The differentiator; the slice that crosses the "valley of death" (ADR-010: ship v1 when Ink lands). `PKCanvasView` page (native palm rejection + low latency), 3-4 paper templates (lined/grid/dotted/blank), save a drawing as **its own file** (PKDrawing + PNG/SVG), embed in notes via `![[sketch.ink]]` (editor shows a thumbnail; tap opens the native canvas).
-  - **Riskiest hypothesis it attacks:** native ink *as a separate embedded page* is good enough to leave GoodNotes/Obsidian, and the embed seam works **without** the inline native-over-webview compositing nightmare (deferred by design, ADR-008).
-  - **Scope locked:** one page, save, embed, open. **No** infinite canvas / brushes / layers.
-  - Spec: `specs/001-ink-mvp/`.
+- [ ] **Ink Notebook (MVP)** — tier **T1**. The differentiator; the slice that crosses the "valley of death" (ADR-010: ship v1 when Ink lands). A GoodNotes-style handwriting **notebook**: `PKCanvasView` pages (native palm rejection + low latency, zoom/pan), per-page paper (blank/lined/grid/dotted), multi-page navigation + add/delete/reorder with thumbnails, saved as **its own `.ink` file** (a JSON notebook of PencilKit pages), embedded in notes via `![[notebook.ink]]` (editor shows a thumbnail of page 1; tap opens the notebook).
+  - **Riskiest hypothesis it attacks:** native ink *as a separate notebook/file* is good enough to leave GoodNotes, and the embed seam works **without** the inline native-over-webview compositing nightmare (deferred by design, ADR-008).
+  - **Scope:** multi-page notebook, zoom, per-page paper, thumbnails/reorder, embed, open. **Out (deferred):** PDF annotation (→ Later, Ink 002), inline-in-text compositing, lasso/shape recognition, custom brushes beyond PKToolPicker.
+  - Handoff (6 PRs, in order): `specs/001-ink-canvas/HANDOFF.md`.
 
 ## Next (prioritized queue — enters when Now empties)
 
@@ -25,6 +25,8 @@ The **editor track ("A" from ADR-010) is substantially built**: opens a user-cho
 
 ## Later (captured, not committed)
 
+- **Ink: PDF annotation (Ink 002)** — import a PDF as page-backgrounds inside a notebook and annotate over it (PDFKit + per-page PencilKit overlay), GoodNotes-style. *Depends on:* the Ink Notebook MVP. The next Ink slice once the notebook ships.
+- **Highlights & PDF/Kindle library (Sistema de conhecimentos)** — a first-class, searchable library of highlights (PDFs, books, articles) and a home for the author's ~400-book PDF collection, feeding the AI as context. Ties to the external [[Sistema de conhecimentos]] (digital library + Kindle-firmware flow; a dedicated Kindle app is a far-future idea). Validated by Kortex's highlights library. *Depends on:* the vault + PDF handling (Ink 002) + the AI slice. Ships as a surface/plugin, not native spine.
 - **Plugin API extraction** — *depends on:* Ink + Board (+ Flows) existing as first-party consumers (ADR-006). Manifest + capability model enforced at the bridge; `network` denied by default (ADR-007).
 - **Flows** — executable workflow node graph; the vision's *"grafo de workflows."* Flint as a **client** of the headless [[Meta-fábrica]] engine — starts as a *viewer* of engine state, not an authoring tool. *Depends on:* canvas engine + Plugin API + the engine existing. Security surface (sandboxed execution).
 - **Full AI agent** — tools to manipulate the canvas, create files, transcribe audio, tiered local↔API orchestration. *Depends on:* the AI thin slice validating + canvas surfaces existing.
@@ -33,7 +35,7 @@ The **editor track ("A" from ADR-010) is substantially built**: opens a user-cho
 - **Optional sync hub + Desktop + marketplace** — `ServerProvider` (LiveSync/CouchDB-style dumb replication hub: user's PC / VPS / our paid VPS), Electron desktop reusing the webview, GitHub-based plugin marketplace. *Depends on:* a stable core. CRDT is legitimate **only** here (ADR-002/003).
 - **Home-storage client (NAS / OneDrive replacement)** — browse the home server's *full* storage (media, large files) from Flint. This is a **remote-access/streaming** model, **distinct** from vault replication — you don't replicate terabytes to a phone, so it's a different consistency model (don't conflate them; ADR-002/003). *Approach:* the home box runs a standard self-host (Nextcloud / WebDAV / Syncthing / SMB) surfaced to iOS via **Files.app + a File Provider extension**; Flint stays a *client*. The vault itself can already live on that storage via the user-chosen folder (ADR-011). A general file browser, if any, ships as a **plugin/activatable tab — never native spine** (it competes with Files.app/Synology/Nextcloud; not Flint's moat). *Depends on:* the home server + the plugin layer.
 - **Opt-in E2EE cloud backup** — client-side-encrypted backup so even a hosted service literally cannot read it (privacy promise preserved on someone else's servers). **BYO-cloud** (S3 / Backblaze / Drive) first — the cheap step; a **paid hosted tier** later — which adds a real durability/availability obligation (T2-grade ops + liability; "we promise peace of mind" is a promise with teeth). *Depends on:* a stable vault + the encryption layer.
-- **Live process map** — nodes pulse as agents work; the Meta-fábrica panel, alive. *Depends on:* the Meta-fábrica engine.
+- **Live process map (Flint as the Meta-fábrica surface)** — Flint connects to the headless engine as an **MCP client**, ingests its event stream (`metafabrica.eventos`) and renders a *live* map: nodes pulse as agents work, edges light when one workflow calls another, gate states flip in real time — real signal only, never decorative. Design seed: `BRIEFING-FLINT-superficie-meta-fabrica.md` (its referenced docs live in the Meta-fábrica project, not here). *Depends on, in order:* the **canvas/Board engine** (the substrate it renders on — **none of it exists yet**), the MCP-client capability (same shape as the Jarvis AI provider), and the engine emitting events. First falsifiable step, once it lands: render the *meso* level of one real run. **Not startable now** — the canvas it assumes isn't built.
 
 ## Sequencing principles (this project)
 
@@ -41,6 +43,6 @@ The **editor track ("A" from ADR-010) is substantially built**: opens a user-cho
 - **The first slice attacks the riskiest hypothesis** (from Discovery), not the easiest.
 - **Consolidate before advancing.** A shipped slice with a bug becomes "Now" again — don't stack on an unstable base.
 - **The Plugin API is extracted, not designed up front** (ADR-006): build first-party surfaces, extract the API once 2-3 consume it.
-- **Ink scope stays locked** (one page, save, embed, open) until v1 ships.
+- **Ink scope = the notebook MVP** (multi-page, per-page paper, zoom/pan, thumbnails/reorder, embed; ADR-012). Explicitly out until v1 ships: PDF annotation (→ Ink 002), lasso, custom brushes, inline-in-text compositing. It is a notebook, **not yet a full GoodNotes replacement**.
 - **Tier promotion (T1 → T2) is a conscious decision** with its own roadmap entry, never by inertia — hardened slice by slice before any public launch.
 - **Heavy capabilities live in headless engines Flint connects to** — the sync hub, [[Jarvis]], the Meta-fábrica engine — never bolted into the app binary. Flint is a client/surface. This is the discipline that stops Flint from sprawling into a do-everything app (NAS + backup service + home control + notes in one binary).

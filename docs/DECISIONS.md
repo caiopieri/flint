@@ -105,6 +105,8 @@ Architecture Decision Records. Each entry: context, decision, rationale, and rej
 
 **Rejected.** A single unified canvas; inline Pencil-in-text compositing in the MVP; a proprietary Board format.
 
+**Update (ADR-012).** The "one page" scope of the Ink MVP is superseded: the MVP is now a multi-page **notebook**. The *separate page (not inline-in-text)* decision here **stands** — inline compositing remains deferred.
+
 ---
 
 ## ADR-009 — AI: local is light; routing is explicit; heat is not a constraint, RAM is
@@ -129,6 +131,8 @@ Architecture Decision Records. Each entry: context, decision, rationale, and rej
 
 **Rejected.** Shipping a pure-editor MVP and hoping it's enough to switch; attempting full Ink (infinite canvas/brushes/layers) in the MVP.
 
+**Update (ADR-012).** "Ink lands" now means the multi-page **notebook**, not a single page. The A→Ink build order here is unchanged; PDF annotation, lasso, custom brushes and infinite canvas stay out of the MVP.
+
 ---
 
 ## ADR-011 — Vault access via document picker + security-scoped bookmark, not an iCloud container
@@ -142,6 +146,28 @@ Architecture Decision Records. Each entry: context, decision, rationale, and rej
 **Rejected.** A Flint-owned iCloud/CloudKit container as the vault home (can't open existing vaults; silos the user's notes); assuming the vault is always in iCloud.
 
 **Implication.** The `Vault` module starts from a bookmark, not a fixed path. Handle bookmark staleness/re-resolution and the `startAccessingSecurityScopedResource` lifecycle.
+
+---
+
+## ADR-012 — Ink MVP promoted from a single drawing to a multi-page notebook
+
+**Context.** ADR-008/010 locked the Ink MVP to "one page, save, embed, open" to de-risk shipping. On review, the product owner judged a single, non-paged canvas too thin to be the GoodNotes-class differentiator the product is betting on — users expect pages, navigation, and per-page paper. A one-page ink that can't even be paged or zoomed wouldn't actually pull anyone off GoodNotes, so it wouldn't test the real hypothesis.
+
+**Decision.** The Ink MVP is a **multi-page notebook**. A `.ink` file is a JSON `InkNotebook` of N pages (`{ id, paper, drawingData }`), each with its own PencilKit drawing and paper, always ≥ 1 page. Scope: multi-page navigation, add/delete/reorder, zoom/pan, per-page paper (blank/lined/grid/dotted), page thumbnails, and embed in a note (`![[notebook.ink]]` → page-1 thumbnail; tap opens). Built as 6 sequential PRs in `specs/001-ink-canvas/HANDOFF.md`.
+
+**Rationale.** The differentiator only crosses the "valley of death" if it's genuinely usable for handwriting; a single fixed page isn't. Zoom/pan is nearly free (`PKCanvasView` is a `UIScrollView`). Multi-page is the smallest set that makes ink a real notebook.
+
+**Rejected / deferred.** PDF annotation (→ Ink 002, the next slice), lasso/selection, shape recognition, custom brushes beyond `PKToolPicker`, handwriting search, infinite canvas, and inline-in-text Pencil compositing. **Zoom level is view state, not persisted** in the document.
+
+**Supersedes.** The "one page" scope clause of ADR-008 and ADR-010. Their other decisions — *separate page, not inline-in-text* (008) and the *A→Ink build order* (010) — remain in force.
+
+**Trade-off.** Bigger MVP, more PRs (6), and the embed seam lands later. Accepted by the PO as the right product bet; it is **a notebook, not yet a full GoodNotes replacement** (no PDF/lasso/advanced tools).
+
+**Input policy (decided during implementation).** On **iPad** the canvas is `drawingPolicy = .pencilOnly`: the finger never draws — it pans and zooms. On **iPhone** it stays `.anyInput` (no Pencil there; the finger is the only pen). Rationale: on iPad the device is a notebook you rest your hand on, and a finger that draws makes pan/zoom hostile — GoodNotes/Notability behave the same way. Trade-off: an iPad user without a Pencil cannot draw at all. Accepted for the MVP; a "finger draws" toggle is a settings item for later, **not** part of this slice.
+
+**Paper is always light (decided during implementation).** `paper.background`/`paper.rule` resolve to the same warm-light values in **both** app themes (`docs/design/tokens/tokens.json`) — the page models physical paper, not app chrome, so it does not follow dark mode. Trade-off: opening a notebook at night flashes a bright page. Accepted for the MVP; a dark-paper option is deferred.
+
+**Zoom implementation note.** The handoff assumed `PKCanvasView`'s own scroll view would provide zoom. It does not fit a **fixed-size page**: the canvas is instead pinned to a fixed 768×1024 page view inside an outer `UIScrollView` that owns zoom, centering and insets (`InkCanvasView.swift`). The canvas's own scrolling/zooming is disabled. This is the same *decision* (zoom/pan is scroll-view behaviour, not hand-rolled math), realised one layer out.
 
 ---
 

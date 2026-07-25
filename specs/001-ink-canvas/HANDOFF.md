@@ -1,224 +1,241 @@
-# Handoff — Ink Canvas MVP (fatia 001)
+# Handoff — Ink Notebook (fatia 001)
 
 > **Para o executor (Codex).** Você implementa; o orquestrador (PO + arquiteto) revisa o diff.
 > Antes de codar, leia: `AGENTS.md` (raiz — Codex lê nativamente), `docs/DECISIONS.md` (ADR-008, ADR-010, ADR-011) e `docs/constitution.md`.
-> Esta é uma fatia **T1**. Vale a constitution inteira; em especial o **PRINCÍPIO VI** (interfaces fixadas abaixo; tocar fora da lista de arquivos é violação; o DoD é a suíte passar; **nunca** apagar/editar teste sem autorização; ambiguidade → **pare e pergunte ao orquestrador**, não decida).
+> Fatia **T1**. Vale a constitution; em especial o **PRINCÍPIO VI**: interfaces fixadas abaixo; tocar arquivo fora da lista é violação; o DoD é a suíte passar; **nunca** apagar/editar teste sem autorização; ambiguidade → **pare e pergunte ao orquestrador**.
+>
+> **Autoridade do escopo:** **ADR-012** (Ink MVP promovido de "uma página" para caderno multi-página; supersede a trava de 1 página de ADR-008/010 — agora alinhado em DECISIONS, constitution e ROADMAP). "Tocar" = **criar/editar**; **ler** qualquer arquivo do repo para referência (padrões de provider, cache, testes) é livre e esperado.
 
 ---
 
-## Discovery (resumo — já decidido nas ADRs)
+## Discovery (resumo — já decidido)
 
-- **Dor:** hoje não dá pra escrever à mão no Flint. A tinta é o diferenciador (o "fosso": tinta de qualidade GoodNotes dentro de um app de notas conectado).
-- **Hipótese mais arriscada:** tinta nativa **como página/arquivo separado** (não inline no texto) é boa o bastante e o seam de embed é evitável. Esta fatia ataca exatamente isso, fazendo o caminho mais fino: criar → desenhar → salvar → reabrir e ver os traços.
-- **Menor teste:** um desenho persiste e reabre idêntico (PKDrawing round-trip), e o arquivo `.ink` aparece e abre pela árvore do vault.
-- **Tier:** T1 (uso próprio; segurança mínima + teste no caminho crítico).
-- **Fora de escopo (NÃO fazer nesta fatia):** embed `![[sketch.ink]]` em nota e thumbnail no editor (fatia 002); tinta inline sobre o texto; canvas infinito; brushes/layers customizados; merge de conflito de arquivo binário; export PNG/SVG.
+- **Dor:** escrever à mão no Flint, como num GoodNotes — mas dentro de um app de notas conectado (o "fosso").
+- **Hipótese mais arriscada:** tinta nativa **como arquivo/caderno separado** (não inline no texto) é boa o bastante; o seam de embed é evitável renderizando uma miniatura.
+- **Menor teste:** um caderno de várias páginas persiste e reabre idêntico (páginas, papel por página, traços), com zoom e navegação.
+- **Tier:** T1.
+- **Decisão do PO (escopo):** **caderno completo no MVP** — multi-página, navegar/zoom, papel por página, miniaturas/reordenar, e embed na nota.
+- **Fora de escopo (NÃO fazer):** **anotação de PDF** (próxima fatia — Ink 002); tinta inline sobre o texto do editor; lasso/seleção, reconhecimento de forma, brushes/canetas customizados além do `PKToolPicker`; busca de manuscrito; export SVG.
 
 ## O que estamos construindo
 
-Uma tela de tinta autônoma. Um arquivo `.ink` no vault guarda **um** desenho PencilKit + o template de papel. O usuário cria um desenho, escreve com o Apple Pencil (ou dedo/mouse), e ao sair o desenho é salvo no arquivo; reabrir restaura os traços. O `.ink` aparece na árvore lateral junto das notas; tocar nele abre a tela de tinta (em vez do editor).
+Um **caderno** de tinta. Um arquivo `.ink` no vault guarda **um caderno de N páginas**; cada página tem seu próprio desenho PencilKit e seu próprio papel (liso/pautado/grade/pontilhado). O usuário cria um caderno, escreve com o Apple Pencil (ou dedo/mouse), dá zoom/pan, vira/adiciona/remove/reordena páginas, e tudo persiste. O `.ink` aparece na árvore lateral; tocar abre o caderno. E uma nota pode embutir o caderno via `![[meucaderno.ink]]` (miniatura da 1ª página; toque abre).
 
 ### Decisões de arquitetura desta fatia (não relitigar)
 
-1. **Formato do `.ink` = JSON** (um wrapper pequeno: `{ paper, drawingData }`), não PKDrawing cru. Mantém o template de papel junto, é um documento testável e puro, e é à prova de futuro. `drawingData` são os bytes de `PKDrawing.dataRepresentation()`, opacos no modelo (o modelo **não** importa PencilKit).
-2. **I/O binário entra no `SyncProvider`** (ADR-003/004: nenhum `FileManager` acima dessa camada). Adicionar `readData`/`writeData`/`createInk` — espelhando os métodos de texto existentes.
-3. **A árvore passa a incluir `.ink`** (além de `.md`). O roteamento (editor vs. tela de tinta) é por extensão do arquivo selecionado — `VaultNode` **não** ganha campo novo.
-4. **A tela de tinta é separada** (ADR-008): nada de compositing de canvas nativo sobre o webview do editor nesta fatia.
+1. **Formato do `.ink` = JSON `InkNotebook`** — `{ pages: [{ id, paper, drawingData }] }`. `drawingData` = bytes de `PKDrawing.dataRepresentation()`, opacos no modelo (o modelo **não** importa PencilKit, fica puro/testável). Um caderno tem **sempre ≥ 1 página**.
+2. **I/O binário entra no `SyncProvider`** (ADR-003/004: nenhum `FileManager` acima dessa camada).
+3. **A árvore inclui `.ink`** (além de `.md`); roteamento editor vs. caderno é por extensão. `VaultNode` **não** muda.
+4. **Tela de tinta separada** (ADR-008): nada de compositing de canvas nativo sobre o webview do editor.
+5. **Zoom/pan é de graça:** `PKCanvasView` **é** um `UIScrollView` — use `minimumZoomScale`/`maximumZoomScale`/`contentSize`, não reimplemente.
 
 ---
 
-## Divisão em 4 PRs (cada um ≤ ~300 linhas) — esta é a fatia que fecha o "Ink MVP" do roadmap
+## Divisão em 6 PRs (cada um ≤ ~300 linhas) — em ordem, cada um depende do anterior
 
-A fatia completa do Ink MVP (ADR-008/010: *uma página, salvar, embed, abrir*) é dividida em 4 PRs, **em ordem** — cada um depende do anterior:
+1. **PR 1 — Fundação:** modelo `InkNotebook` + I/O binário + árvore inclui `.ink`. *Testável.*
+2. **PR 2 — Página + zoom:** `PKCanvasView` com zoom/pan + papel; `InkScreen` mostrando **1 página**; criar/abrir; salvar. *Manual.*
+3. **PR 3 — Render PNG:** página → PNG (insumo de miniatura e embed). *Testável.*
+4. **PR 4 — Multi-página:** navegar, adicionar, apagar, papel por página, indicador "n/total". *Manual.*
+5. **PR 5 — Visão de páginas:** grade de miniaturas, pular para página, reordenar. *Manual.*
+6. **PR 6 — Embed na nota:** `![[caderno.ink]]` vira miniatura no editor; toque abre o caderno. *Manual.* **O seam (ADR-008).**
 
-1. **PR 1 — Fundação** (documento `.ink` + I/O binário + árvore). Testável.
-2. **PR 2 — Tela de tinta** (canvas PencilKit + criar/abrir + papéis). Manual.
-3. **PR 3 — Render PNG** (PKDrawing → PNG; alimenta o thumbnail). Testável.
-4. **PR 4 — Embed na nota** (`![[sketch.ink]]` vira thumbnail; toque abre o canvas). Manual. **É o seam mais delicado** (ADR-008).
-
-**Pontos de revisão (orquestrador):** o mínimo é **uma revisão ao fim do PR 4** (o MVP inteiro). **Recomendo** um checkpoint rápido **após o PR 2** — é o marco "já dá pra usar" e desarma o risco do seam (PR 3-4). Decisão do PO. Em qualquer drift de interface, o executor **para e reporta** (ver Regras de escalação).
+**Revisão (orquestrador):** mínimo = uma revisão ao fim do PR 6. **Recomendo** checkpoints rápidos após o **PR 2** (1 página já usável) e o **PR 4** (multi-página funcionando) — desarmam risco antes do overview e do seam. Decisão do PO.
 
 ---
 
-## PR 1 — Fundação (testável; este é o portão)
+## PR 1 — Fundação (testável; portão)
 
-### Arquivos a CRIAR
-- `ios/Flint/Ink/InkDocument.swift`
-- `ios/FlintTests/InkDocumentTests.swift`
+### CRIAR
+- `ios/Flint/Ink/InkNotebook.swift`
+- `ios/FlintTests/InkNotebookTests.swift`
 
-### Arquivos a TOCAR
-- `ios/Flint/Sync/SyncProvider.swift` — adicionar 3 métodos ao protocolo.
-- `ios/Flint/Sync/iCloudDriveProvider.swift` — implementar os 3 métodos (siga o padrão dos métodos de texto já existentes lá).
-- `ios/Flint/Vault/VaultFileSystem.swift` — adicionar os primitivos coordenados `readData`/`writeData`/`createInk`.
-- `ios/Flint/Vault/VaultFileSystem.swift` — no `node(at:isRoot:)`, relaxar o filtro de extensão para incluir `ink`; atualizar o comentário do `buildTree` (`.md` → `.md`/`.ink`).
+### TOCAR
+- `ios/Flint/Sync/SyncProvider.swift` — 3 métodos no protocolo (abaixo).
+- `ios/Flint/Sync/iCloudDriveProvider.swift` — implementar (siga o padrão dos métodos de texto já lá).
+- `ios/Flint/Vault/VaultFileSystem.swift` — primitivos `readData`/`writeData`/`createInk`; e no `node(at:isRoot:)` relaxar o filtro de extensão para incluir `ink` (atualizar o comentário `.md` → `.md`/`.ink`).
 
-### Interfaces FIXAS (assinaturas exatas — não redesenhar)
-
-`InkDocument.swift`:
+### Interfaces FIXAS
+`InkNotebook.swift`:
 ```swift
 import Foundation
 
-/// Formato em disco de um arquivo `.ink`: um wrapper JSON em volta de um desenho
-/// PencilKit + o template de papel. Um arquivo = um desenho (escopo travado).
-/// Tipo puro e Sendable — sem dependência de PencilKit, para ser unit-testável.
-struct InkDocument: Codable, Equatable, Sendable {
-    enum Paper: String, Codable, CaseIterable, Sendable {
-        case blank, lined, grid, dotted
+/// Formato em disco de um `.ink`: um caderno de páginas PencilKit + papel por
+/// página, serializado em JSON. Tipo puro e Sendable (sem PencilKit) → testável.
+struct InkNotebook: Codable, Equatable, Sendable {
+    enum Paper: String, Codable, CaseIterable, Sendable { case blank, lined, grid, dotted }
+
+    struct Page: Codable, Equatable, Sendable, Identifiable {
+        var id: UUID
+        var paper: Paper
+        /// Bytes de `PKDrawing.dataRepresentation()`. Opacos aqui de propósito.
+        var drawingData: Data
+        init(id: UUID = UUID(), paper: Paper = .dotted, drawingData: Data = Data())
     }
 
-    var paper: Paper
-    /// Bytes de `PKDrawing.dataRepresentation()`. Opacos aqui de propósito.
-    var drawingData: Data
+    /// Invariante mantida pelos chamadores (UI): sempre ≥ 1 página.
+    var pages: [Page]
+    init(pages: [Page] = [Page()])
 
-    init(paper: Paper = .dotted, drawingData: Data = Data())
-
-    /// Decodifica de bytes de arquivo. `Data` vazia → documento default (arquivo recém-criado).
-    static func decode(_ data: Data) throws -> InkDocument
-
-    /// Serializa para gravar em disco.
+    /// `Data` vazia → caderno default (1 página em branco). Não lança nesse caso.
+    static func decode(_ data: Data) throws -> InkNotebook
     func encoded() throws -> Data
 }
 ```
-
 `SyncProvider.swift` (adicionar ao protocolo):
 ```swift
-/// Lê os bytes crus de um arquivo do vault (binário: `.ink`, anexos futuros).
-/// Coordenado. NÃO reconcilia conflito do iCloud (binário não tem merge de texto).
+/// Lê bytes crus de um arquivo do vault (binário). Coordenado. NÃO reconcilia
+/// conflito iCloud (binário não tem merge de texto — last-writer-wins por ora).
 func readData(_ url: URL) async throws -> Data
-
 /// Grava bytes crus (coordenado, atômico).
 func writeData(_ data: Data, to url: URL) async throws
-
-/// Cria um novo arquivo `.ink` vazio (conteúdo = `InkDocument().encoded()`),
-/// com nome não-colidente; retorna a URL criada.
+/// Cria um `.ink` novo (conteúdo = `InkNotebook().encoded()`), nome não-colidente; retorna a URL.
 func createInk(in directory: URL, baseName: String) async throws -> URL
 ```
-
-`VaultFileSystem.swift` (novos primitivos, espelhando `readNote`/`writeNote`/`createNote`):
+`VaultFileSystem.swift` (espelhar `readNote`/`writeNote`/`createNote`):
 ```swift
 static func readData(at url: URL) throws -> Data
 static func writeData(_ data: Data, to url: URL) throws
-static func createInk(in directory: URL, baseName: String = "Drawing") throws -> URL
+static func createInk(in directory: URL, baseName: String = "Notebook") throws -> URL
 ```
 
-### Critérios de aceite (TESTES — escritos por você, são o DoD)
-Em `InkDocumentTests.swift` (use `XCTest`; siga o estilo de `FlintTests/SyncBaseCacheTests.swift`):
-1. **Round-trip:** `InkDocument.decode(doc.encoded()) == doc` para um doc com `drawingData` não-vazia e cada `Paper`.
-2. **Vazio:** `InkDocument.decode(Data())` retorna o documento default (`paper == .dotted`, `drawingData` vazia), sem lançar.
-3. **Preserva paper e bytes:** mudar `paper` e `drawingData` sobrevive ao round-trip.
-4. **(I/O) round-trip de dados via provider/FS:** num diretório temporário, `writeData` seguido de `readData` devolve os mesmos bytes; `createInk` cria um arquivo `.ink` cujo conteúdo decodifica para um `InkDocument` default. (Espelhe o setup de tmpdir de `SearchIndexTests`/`SyncBaseCacheTests`.)
+### Aceite (TESTES — `InkNotebookTests.swift`, estilo `FlintTests/SyncBaseCacheTests.swift`)
+1. Round-trip: `decode(nb.encoded()) == nb` para caderno de 1 e de várias páginas com papéis distintos e `drawingData` não-vazia.
+2. `decode(Data())` → caderno com exatamente 1 página, `paper == .dotted`, sem lançar.
+3. Páginas preservam ordem, `id`, `paper` e `drawingData` no round-trip.
+4. I/O: em tmpdir, `writeData`→`readData` devolve os mesmos bytes; `createInk` cria `.ink` que decodifica para caderno default de 1 página.
 
-### DoD do PR 1
-- [ ] Os 4 testes acima passando; toda a suíte `FlintTests` verde.
-- [ ] Type-check / build limpos (`make build`).
-- [ ] Diff ≤ ~300 linhas; nenhum arquivo fora da lista acima tocado.
-- [ ] Nenhum teste existente apagado/desabilitado.
+### DoD
+- [ ] Testes verdes; suíte inteira verde; `make build` limpo. Diff ≤ ~300 linhas; só os arquivos listados; nenhum teste apagado.
 
 ---
 
-## PR 2 — UI (depende do PR 1)
+## PR 2 — Página única + zoom (manual)
 
-### Arquivos a CRIAR
-- `ios/Flint/Ink/InkCanvasView.swift` — `UIViewRepresentable` em volta de `PKCanvasView` + `PKToolPicker`. `import PencilKit` mora aqui. Props: binding para o `PKDrawing` e o `InkDocument.Paper` (renderizado como fundo: blank/lined/grid/dotted). Aceita Pencil, dedo e mouse (`drawingPolicy = .anyInput`).
-- `ios/Flint/Ink/InkScreen.swift` — tela SwiftUI. Recebe `vault: VaultStore` + `relativePath: String`. Carrega o `InkDocument` no `.task`, hospeda `InkCanvasView`, e **salva com a mesma disciplina do editor**: debounce ao desenhar **e** flush ao sair/ocultar (espelhe `web/src/index.ts` / o flush do editor — nunca perder traço). Inclui um seletor dos 4 papéis que atualiza o doc e re-salva.
+### CRIAR
+- `ios/Flint/Ink/InkCanvasView.swift` — `UIViewRepresentable` em volta de `PKCanvasView` (`import PencilKit` aqui). Zoom/pan via `minimumZoomScale`/`maximumZoomScale`. Papel desenhado como fundo (blank/lined/grid/dotted). `PKToolPicker` visível. `drawingPolicy = .anyInput`. Props: binding do `PKDrawing` + o `InkNotebook.Paper`.
+- `ios/Flint/Ink/InkScreen.swift` — tela SwiftUI; recebe `vault: VaultStore` + `relativePath: String`. Carrega o `InkNotebook` no `.task`; nesta etapa mostra **apenas a página 0**, com seletor de papel daquela página. Salva com a disciplina do editor: debounce ao desenhar **e** flush ao sair/ocultar (espelhe `web/src/index.ts`).
 
-### Arquivos a TOCAR
-- `ios/Flint/Vault/VaultStore.swift` — adicionar (espelhando `createNote`/`editorLoad`/`editorSave`):
+### TOCAR
+- `ios/Flint/Vault/VaultStore.swift` (espelhar `createNote`/`editorLoad`/`editorSave`):
 ```swift
-func createDrawing() async                                   // provider.createInk → reload → open(node)
-func inkLoad(_ relativePath: String) async throws -> InkDocument   // provider.readData → InkDocument.decode
-func inkSave(_ relativePath: String, _ doc: InkDocument) async throws  // doc.encoded → provider.writeData
+func createNotebook() async                                    // provider.createInk → reload → open(node)
+func notebookLoad(_ relativePath: String) async throws -> InkNotebook   // provider.readData → decode
+func notebookSave(_ relativePath: String, _ notebook: InkNotebook) async throws  // encoded → writeData
 ```
-- `ios/Flint/App/VaultNavigator.swift` — duas mudanças, seguindo os padrões que já existem nesse arquivo:
-  1. Uma ação **"New Drawing"** junto das ações New Note / New Folder, chamando `vault.createDrawing()`.
-  2. Quando a seleção é um nó `.ink` (`selection?.url.pathExtension == "ink"`), apresentar `InkScreen` em vez do editor (mesmo mecanismo de apresentação que o editor já usa para uma nota selecionada).
+- `ios/Flint/App/VaultNavigator.swift` — ação **"New Notebook"** junto de New Note/New Folder (`vault.createNotebook()`); e quando a seleção é `.ink` (`selection?.url.pathExtension == "ink"`), apresentar `InkScreen` em vez do editor (mesmo mecanismo de apresentação da nota).
 
-### Critérios de aceite (manual — UI PencilKit não é unit-testável)
-- Criar um desenho ("New Drawing"): aparece na árvore como arquivo `.ink`.
-- Desenhar, sair da tela, matar o app, reabrir o `.ink`: os traços persistem idênticos.
-- Trocar o papel (ex.: dotted → grid) persiste após reabrir.
-- O editor de Markdown continua funcionando normalmente para `.md` (nenhuma regressão).
+### Aceite (manual)
+- "New Notebook" cria um `.ink` na árvore; abre na tela de tinta.
+- Desenhar, dar zoom/pan, sair, matar o app, reabrir: **traços e papel persistem**. (Zoom/pan funcionam, mas o nível de zoom é estado de *view* e **não** é persistido no `.ink` — by design, ADR-012.)
+- Editor de `.md` sem regressão.
 
-### DoD do PR 2
-- [ ] Suíte `FlintTests` continua verde; `make build` limpo.
-- [ ] Os 4 itens manuais acima verificados em device/simulador.
-- [ ] Diff ≤ ~300 linhas; nenhum arquivo fora da lista tocado.
-- [ ] Escopo: nada de embed/inline/infinito/brushes/export (é fatia 002+).
+### DoD
+- [ ] Suíte verde; `make build` limpo. Diff ≤ ~300 linhas; só os arquivos listados.
 
 ---
 
 ## PR 3 — Render de PNG (testável)
 
-Renderiza um desenho para PNG — insumo do thumbnail do embed (PR 4) e da representação portátil (ADR-008). **SVG fica fora do MVP** (futuro).
-
-### Arquivos a CRIAR
-- `ios/Flint/Ink/InkRenderer.swift`
-- `ios/FlintTests/InkRendererTests.swift`
+### CRIAR
+- `ios/Flint/Ink/InkRenderer.swift`, `ios/FlintTests/InkRendererTests.swift`
 
 ### Interface FIXA
 ```swift
 import PencilKit
 import UIKit
 
-/// Renderiza tinta para bitmap. PencilKit mora aqui (InkDocument continua puro).
 enum InkRenderer {
-    /// Decodifica o desenho do documento e renderiza um PNG cabendo em `maxSize`
-    /// (pontos) na `scale` dada. Desenho vazio → PNG transparente de `maxSize`.
-    static func thumbnailPNG(for doc: InkDocument, maxSize: CGSize, scale: CGFloat) throws -> Data
+    /// Decodifica o desenho da página e renderiza um PNG cabendo em `maxSize`
+    /// (pontos) na `scale`. Página vazia → PNG transparente de `maxSize`.
+    static func pagePNG(_ page: InkNotebook.Page, maxSize: CGSize, scale: CGFloat) throws -> Data
 }
 ```
-Notas: decodificar via `PKDrawing(data:)` (Data vazia → `PKDrawing()`); renderizar via `drawing.image(from: rect, scale:)` → `pngData()`. Calcular `rect` a partir de `drawing.bounds` (cair em `maxSize` quando o desenho for vazio/minúsculo).
+Notas: `PKDrawing(data:)` (vazio → `PKDrawing()`); `drawing.image(from: rect, scale:)` → `pngData()`; `rect` a partir de `drawing.bounds` (cair em `maxSize`).
 
-### Critérios de aceite (TESTES)
-1. `thumbnailPNG(for: InkDocument(), maxSize: 256×256, scale: 2)` retorna `Data` não-vazia começando com a assinatura PNG (`0x89 0x50 0x4E 0x47`).
-2. Um `InkDocument` cujo `drawingData` veio de um `PKDrawing` com ao menos um traço também produz PNG válido (construa o traço com `PKStroke`/`PKStrokePoint` no teste, ou carregue um fixture pequeno).
+### Aceite (TESTES)
+1. `pagePNG(InkNotebook.Page(), maxSize: 256×256, scale: 2)` → `Data` começando com a assinatura PNG (`0x89 0x50 0x4E 0x47`).
+2. Página com ≥1 traço (construído via `PKStroke`/`PKStrokePoint` ou fixture) → PNG válido.
 
-### DoD do PR 3
-- [ ] Testes acima verdes; suíte inteira verde; `make build` limpo. Diff ≤ ~300 linhas; só os arquivos listados.
+### DoD
+- [ ] Testes verdes; suíte verde; `make build` limpo. Diff ≤ ~300 linhas.
 
 ---
 
-## PR 4 — Embed na nota (manual; o seam — ADR-008)
+## PR 4 — Multi-página (manual)
 
-`![[algumdesenho.ink]]` numa nota renderiza um **thumbnail** no editor (Live Preview); tocar abre a tela de tinta. **Não é** compositing inline de canvas nativo sobre o texto — é uma imagem + um toque que apresenta a `InkScreen`. Esse desvio é deliberado (ADR-008: o compositing inline é o seam mais difícil do projeto e fica fora do MVP).
+### TOCAR (e extrair se ajudar a manter ≤300)
+- `ios/Flint/Ink/InkScreen.swift` — navegação entre páginas (scroll paginado **ou** próximo/anterior), **adicionar** página (append `InkNotebook.Page()`), **apagar** a página atual (com confirmação; **bloquear apagar a última** — invariante ≥1), seletor de papel por página, indicador "n/total". Cada mutação atualiza o `InkNotebook` e salva.
+- (Opcional) `ios/Flint/Ink/InkPageView.swift` — extração da view de uma página, se `InkScreen` crescer demais.
 
-### Arquivos a CRIAR
-- `web/src/inkEmbed.ts` — o parser do node `Embed` (`![[ … ]]`), o `InkEmbedWidget` e o `ViewPlugin` que substitui o embed pelo thumbnail. Espelhe os padrões de `livePreview.ts` (WidgetType, `selectionTouches` para revelar o texto cru ao editar).
+### Aceite (manual)
+- Adicionar páginas; navegar entre elas; cada página tem seu papel e seus traços.
+- Apagar uma página (menos a última); reabrir preserva ordem e conteúdo.
 
-### Arquivos a TOCAR
-- `web/src/editor.ts` — registrar a extensão de markdown do `Embed` **antes** de `WikiLink` em `markdown({ extensions: [...] })`, e incluir o `inkEmbed()` (plugin + tema) na lista de extensões.
-- `ios/Flint/Bridge/Bridge.swift` — dois métodos novos no `switch`:
-  - `ink.thumbnail`, payload `{ "target": String }` → `(["png": <base64 String>, "found": Bool], nil)`.
-  - `ink.open`, payload `{ "target": String }` → efeito colateral `vault.requestInk(target)`, retorna `(["ok": true], nil)`.
-- `ios/Flint/Vault/VaultStore.swift` — adicionar:
+### DoD
+- [ ] Suíte verde; `make build` limpo. Diff ≤ ~300 linhas; sem tocar arquivo fora da lista.
+
+---
+
+## PR 5 — Visão de páginas (miniaturas + reordenar) (manual)
+
+### CRIAR
+- `ios/Flint/Ink/InkPageOverview.swift` — grade/painel de miniaturas (via `InkRenderer.pagePNG`); tocar pula para a página; arrastar para **reordenar**; botão de adicionar página.
+
+> Se overview + reordenar passar de ~300 linhas, **separe**: PR 5a (grade de miniaturas + pular para página) e PR 5b (reordenar por arraste). Escalar a divisão, não estourar o limite.
+
+### TOCAR
+- `ios/Flint/Ink/InkScreen.swift` — apresentar o overview (botão/gesto) e reagir à seleção/reordenação.
+
+### Aceite (manual)
+- Overview mostra miniatura de cada página; tocar pula; reordenar persiste após reabrir.
+
+### DoD
+- [ ] Suíte verde; `make build` limpo. Diff ≤ ~300 linhas.
+
+---
+
+## PR 6 — Embed na nota (manual; o seam — ADR-008)
+
+`![[meucaderno.ink]]` numa nota renderiza a **miniatura da 1ª página** no editor (Live Preview); tocar abre o caderno na `InkScreen`. **Não** é compositing inline de canvas nativo sobre o texto (ADR-008: fica fora do MVP).
+
+### CRIAR
+- `web/src/inkEmbed.ts` — parser do node `Embed` (`![[ … ]]`), `InkEmbedWidget`, e o `ViewPlugin` que substitui o embed pela miniatura. Espelhe `livePreview.ts` (`WidgetType`, `selectionTouches` para revelar o texto cru ao editar).
+
+### TOCAR
+- `web/src/editor.ts` — registrar a extensão `Embed` **antes** de `WikiLink` em `markdown({ extensions: [...] })`; incluir `inkEmbed()` (plugin + tema) nas extensões.
+- `ios/Flint/Bridge/Bridge.swift` — dois métodos no `switch`:
+  - `ink.thumbnail`, payload `{ "target": String }` → `(["png": <base64>, "found": Bool], nil)`.
+  - `ink.open`, payload `{ "target": String }` → efeito `vault.requestInk(target)`, retorna `(["ok": true], nil)`.
+- `ios/Flint/Vault/VaultStore.swift`:
 ```swift
 private(set) var inkRequest: String?            // path relativo que o navigator deve apresentar
-func requestInk(_ target: String)               // resolve target→path; seta inkRequest (ou erro se não achar)
-func clearInkRequest()                           // navigator chama ao fechar a tela
-func resolveInkTarget(_ target: String) -> String?   // basename OU path-relativo → path relativo de um .ink na árvore; nil se não existe/ambíguo
-func inkThumbnailPNG(_ target: String) async -> Data? // resolve + readData + InkRenderer.thumbnailPNG (nil se não achar)
+func requestInk(_ target: String)               // resolve target→path; seta inkRequest
+func clearInkRequest()                           // navigator chama ao fechar
+func resolveInkTarget(_ target: String) -> String?   // basename OU path-relativo → path de um .ink na árvore; nil se não existe/ambíguo
+func inkThumbnailPNG(_ target: String) async -> Data? // resolve + readData + decode + InkRenderer.pagePNG(pages[0])
 ```
-- `ios/Flint/App/VaultNavigator.swift` — observar `vault.inkRequest`; quando não-nil, apresentar `InkScreen` para aquele path (e `clearInkRequest()` ao fechar). Reusa a `InkScreen` do PR 2.
+- `ios/Flint/App/VaultNavigator.swift` — observar `vault.inkRequest`; quando não-nil, apresentar `InkScreen` daquele path e `clearInkRequest()` ao fechar.
 
 ### Contrato JS (`inkEmbed.ts`)
 - Node `Embed`: dispara em `!` seguido de `[[`, fecha em `]]`, não cruza linha (espelhe `pairedInline`). Registrar **antes** de `WikiLink`.
-- `InkEmbedWidget`: no `toDOM`, chama `call<{png:string;found:boolean}>("ink.thumbnail",{target})`; se `found`, mostra `<img src="data:image/png;base64,…">` (com `cursor:pointer`); senão um placeholder "desenho não encontrado". Clique → `call("ink.open",{target})`. `ignoreEvent()` para o clique não virar edição. Revelar o texto cru `![[…]]` quando a seleção tocar o node (como o resto do Live Preview).
+- `InkEmbedWidget.toDOM`: `call<{png:string;found:boolean}>("ink.thumbnail",{target})`; se `found`, `<img src="data:image/png;base64,…">` (cursor:pointer); senão placeholder "caderno não encontrado". Clique → `call("ink.open",{target})`. `ignoreEvent()` no clique. Revelar `![[…]]` cru quando a seleção tocar o node.
 
-### Critérios de aceite (manual)
-- Numa nota, digitar `![[Drawing.ink]]` (nome de um `.ink` que existe) mostra o thumbnail do desenho.
-- Tocar no thumbnail abre a tela de tinta daquele arquivo; editar e voltar reflete o desenho atualizado (após reabrir/reload).
-- Posicionar o cursor sobre o embed revela o `![[…]]` cru para edição; sair volta ao thumbnail.
-- Target inexistente → placeholder, **nunca** crash. Nenhuma regressão no Live Preview de `.md`.
+### Aceite (manual)
+- `![[Notebook.ink]]` (de um `.ink` existente) mostra a miniatura da 1ª página; tocar abre o caderno; editar e voltar reflete a miniatura atualizada (após reload).
+- Cursor sobre o embed revela o `![[…]]` cru; sair volta à miniatura. Target inexistente → placeholder, **nunca** crash. Sem regressão no Live Preview de `.md`.
 
-### DoD do PR 4
-- [ ] Suíte verde; `make build` limpo; `npm run typecheck` limpo (web). Diff ≤ ~300 linhas; só os arquivos listados.
-- [ ] Itens manuais verificados em device/simulador.
-- [ ] Escopo: sem compositing inline, sem SVG, sem export externo.
+### DoD
+- [ ] Suíte verde; `make build` limpo; `npm run typecheck` limpo. Diff ≤ ~300 linhas; só os arquivos listados.
+- [ ] Manuais verificados. Escopo: sem compositing inline, sem PDF, sem SVG.
 
 ---
 
+## Próxima fatia (Ink 002 — NÃO fazer agora)
+**Anotação de PDF** (estilo GoodNotes): importar um PDF como páginas-fundo do caderno e anotar por cima (PDFKit + overlay PencilKit por página). Fera própria — fica para depois de o caderno fechar.
+
 ## Regras de escalação (PRINCÍPIO VI)
-- Se alguma **interface fixada** acima parecer errada ou insuficiente, **pare e reporte** ao orquestrador — não improvise outra.
-- Se algo exigir tocar um arquivo **fora da lista**, **pare e reporte** (provavelmente é sinal de que a fatia precisa ser re-cortada).
-- Teste que parece errado: **pare e reporte**; não edite/apague.
-- Ambiguidade de produto (ex.: qual papel default, comportamento de undo): **pergunte** — não decida sozinho.
+- Interface fixada parece errada/insuficiente → **pare e reporte**, não improvise outra.
+- Precisa tocar arquivo **fora da lista** → **pare e reporte** (sinal de re-corte da fatia).
+- Teste que parece errado → **pare e reporte**; não edite/apague.
+- Ambiguidade de produto (papel default, comportamento de undo, gesto de navegação) → **pergunte**.
