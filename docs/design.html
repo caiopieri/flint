@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flint Design System</title>
+  <style>
+    :root {
+      --warm-0:#fff; --warm-50:#fcfbf7; --warm-100:#f7f5f0; --warm-150:#e4e1d9; --warm-200:#c9c7c0; --warm-300:#a9a79f; --warm-400:#888780; --warm-500:#6b6a64; --warm-600:#5f5e5a; --warm-700:#444441; --warm-800:#2c2c2a; --warm-850:#232220; --warm-900:#1a1917;
+      --spark-300:#fac775; --spark-500:#ef9f27; --spark-700:#b5740c; --spark-800:#9a6206;
+      --bg:var(--warm-900); --surface:var(--warm-850); --raised:var(--warm-800); --border:var(--warm-700); --text:#edebe6; --secondary:var(--warm-300); --muted:var(--warm-400); --accent:var(--spark-500); --accent-text:var(--spark-500); --paper:var(--warm-50); --rule:var(--warm-150);
+    }
+    [data-theme="light"] { --bg:var(--warm-100); --surface:var(--warm-0); --raised:var(--warm-50); --border:var(--warm-150); --text:var(--warm-900); --secondary:var(--warm-500); --muted:var(--warm-400); --accent-text:var(--spark-800); }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:17px/1.5 ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif; }
+    header { border-bottom:1px solid var(--border); padding:48px 24px; }
+    main, header > div { max-width:960px; margin:auto; }
+    h1,h2,h3 { color:var(--text); } h1 { font:700 34px/1.2 ui-serif,"New York",Charter,Georgia,serif; margin:0 0 8px; } h2 { font:700 28px/1.3 ui-serif,"New York",Charter,Georgia,serif; margin:56px 0 16px; } h3 { font:600 20px/1.4 ui-serif,"New York",Charter,Georgia,serif; margin:28px 0 12px; }
+    main { padding:8px 24px 64px; } p,li { max-width:68ch; } .muted { color:var(--secondary); } code { font:14px/1.5 ui-monospace,"SF Mono",Menlo,monospace; color:var(--accent-text); } .callout { border-left:3px solid var(--accent); background:var(--surface); border-radius:0 10px 10px 0; padding:16px; max-width:68ch; }
+    .toolbar { display:flex; gap:8px; align-items:center; margin-top:24px; } button { min-height:44px; border:1px solid var(--border); border-radius:10px; padding:8px 16px; color:var(--text); background:var(--raised); font:inherit; cursor:pointer; } button.primary { border-color:var(--accent); background:var(--accent); color:var(--warm-900); } button:hover { filter:brightness(1.08); }
+    .swatches { display:grid; grid-template-columns:repeat(auto-fit,minmax(135px,1fr)); gap:12px; } .swatch { border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface); } .color { height:72px; } .swatch code { display:block; padding:8px 10px; color:var(--text); }
+    .specimens { display:grid; gap:16px; } .card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px; } .reading { max-width:68ch; padding:24px; background:var(--bg); font:400 18px/1.6 ui-serif,"New York",Charter,Georgia,serif; } .paper { min-height:160px; padding:24px; color:var(--warm-900); background-color:var(--paper); background-image:radial-gradient(var(--rule) 1px,transparent 1px); background-size:16px 16px; }
+    table { border-collapse:collapse; width:100%; max-width:68ch; } th,td { text-align:left; border-bottom:1px solid var(--border); padding:10px; } th { color:var(--secondary); font-weight:600; } footer { border-top:1px solid var(--border); padding:24px; color:var(--muted); font-size:13px; }
+    @media (max-width:600px) { header { padding:32px 20px; } main { padding:4px 20px 48px; } h1 { font-size:30px; } }
+  </style>
+</head>
+<body>
+  <header><div>
+    <h1>Flint Design System</h1>
+    <p class="muted">A human-readable mirror of <code>docs/design.md</code>. The canonical token source is <code>docs/design/tokens/tokens.json</code>; this page presents it for review.</p>
+    <div class="toolbar"><button class="primary">Primary action</button><button>Secondary action</button><button id="theme-toggle" aria-label="Toggle color theme">Toggle theme</button></div>
+  </div></header>
+  <main>
+    <h2>Overview</h2>
+    <p>Flint is a local-first note-taking app. Its interface descends from the icon: a warm dark field, a faceted stone, and restrained amber sparks. The chrome recedes so the user’s writing remains the brightest thing on screen.</p>
+    <div class="callout">Two engines share one visual identity: SwiftUI chrome and CodeMirror in a WKWebView. Use generated tokens on both sides of the seam; never introduce one-sided colors, sizes, or type.</div>
+
+    <h2>Color</h2>
+    <h3>Warm neutrals</h3>
+    <div class="swatches">
+      <div class="swatch"><div class="color" style="background:#fff"></div><code>warm-0 #FFFFFF</code></div><div class="swatch"><div class="color" style="background:#fcfbf7"></div><code>warm-50 #FCFBF7</code></div><div class="swatch"><div class="color" style="background:#f7f5f0"></div><code>warm-100 #F7F5F0</code></div><div class="swatch"><div class="color" style="background:#e4e1d9"></div><code>warm-150 #E4E1D9</code></div><div class="swatch"><div class="color" style="background:#c9c7c0"></div><code>warm-200 #C9C7C0</code></div><div class="swatch"><div class="color" style="background:#a9a79f"></div><code>warm-300 #A9A79F</code></div><div class="swatch"><div class="color" style="background:#888780"></div><code>warm-400 #888780</code></div><div class="swatch"><div class="color" style="background:#6b6a64"></div><code>warm-500 #6B6A64</code></div><div class="swatch"><div class="color" style="background:#5f5e5a"></div><code>warm-600 #5F5E5A</code></div><div class="swatch"><div class="color" style="background:#444441"></div><code>warm-700 #444441</code></div><div class="swatch"><div class="color" style="background:#2c2c2a"></div><code>warm-800 #2C2C2A</code></div><div class="swatch"><div class="color" style="background:#232220"></div><code>warm-850 #232220</code></div><div class="swatch"><div class="color" style="background:#1a1917"></div><code>warm-900 #1A1917</code></div>
+    </div>
+    <h3>Amber spark</h3>
+    <div class="swatches"><div class="swatch"><div class="color" style="background:#fac775"></div><code>spark-300 #FAC775</code></div><div class="swatch"><div class="color" style="background:#ef9f27"></div><code>spark-500 #EF9F27</code></div><div class="swatch"><div class="color" style="background:#b5740c"></div><code>spark-700 #B5740C</code></div><div class="swatch"><div class="color" style="background:#9a6206"></div><code>spark-800 #9A6206</code></div></div>
+    <p>Dark mode is primary. In light mode, amber text uses <code>accent-text</code> (<code>spark-800</code>) for accessible contrast; <code>spark-500</code> remains suitable for fills, icons, and the cursor.</p>
+
+    <h2>Typography</h2>
+    <table><thead><tr><th>Role</th><th>Typeface</th><th>Scale</th></tr></thead><tbody><tr><td>Reading</td><td>New York / Charter / Georgia</td><td>18px / 1.6</td></tr><tr><td>UI</td><td>SF Pro / system sans</td><td>13–34px</td></tr><tr><td>Code</td><td>SF Mono / Menlo</td><td>14.5px / 1.5</td></tr></tbody></table>
+    <div class="reading"><strong>Reading is the core surface.</strong> The editor uses an editorial serif at a comfortable measure of 68ch. Hierarchy comes from weight and size, not decorative color.</div>
+
+    <h2>Layout and depth</h2>
+    <p>Use the 4pt spacing grid: 4, 8, 12, 16, 24, 32, 48, and 64px. Establish depth with warm surface planes and hairline borders, not theatrical shadows. Outer containers use continuous 6/10/16/22px corners; the editor and ink canvas remain square.</p>
+    <div class="specimens"><div class="card"><strong>Raised surface</strong><br><span class="muted">Cards, chips, and popovers use <code>surface-raised</code> plus a border.</span></div><div class="paper"><strong>Ink canvas</strong><br>Paper stays light in either app theme. Rules and dots use <code>paper-rule</code>.</div></div>
+
+    <h2>Components</h2>
+    <ul><li><strong>Primary button:</strong> amber, maximum one per view, at least 44pt high.</li><li><strong>Secondary button:</strong> raised surface with a hairline border.</li><li><strong>Sidebar:</strong> selected row gets a raised surface plus a 2px amber leading bar.</li><li><strong>Editor:</strong> <code>bg</code>, reading serif, amber cursor, translucent amber selection.</li><li><strong>Ink embed:</strong> thumbnail on a raised surface, with a muted <code>pencil.tip</code> affordance.</li></ul>
+
+    <h2>Rules</h2>
+    <ul><li>Use semantic tokens, never raw hex values in product code.</li><li>Keep amber rare: it marks action and current location.</li><li>Honor Dynamic Type, zoom, and Reduce Motion.</li><li>Verify SwiftUI and CodeMirror render the same token values.</li></ul>
+  </main>
+  <footer>Flint Design System · source: <code>docs/design.md</code> and <code>docs/design/tokens/tokens.json</code></footer>
+  <script>document.getElementById('theme-toggle').addEventListener('click', () => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; });</script>
+</body>
+</html>
