@@ -38,7 +38,7 @@ App de notas **open source, local-first**, para iOS/iPadOS (depois macOS/Windows
 - Nenhuma cor/tamanho/tipo definido só de um lado: **tudo via `tokens.json`** (parity por construção, ADR-D03).
 - Tipografia nativa: New York (leitura) / SF Pro (UI) / SF Mono (código) — zero webfont (ADR-D04).
 - Ao terminar: rodar testes (`FlintTests`) + lint/type-check; cumprir o DoD do `~/.claude/CLAUDE.md`. **Nunca apagar teste sem autorização.**
-- 1 tarefa = 1 PR ≤ ~300 linhas. Escopo travado do Ink no MVP: **uma página, salvar, embed, abrir** — nada de canvas infinito/brushes/layers.
+- 1 tarefa = 1 PR ≤ ~300 linhas. Escopo travado do Ink no MVP: **caderno multi-página, salvar, embed, abrir** (ADR-012) — nada de canvas infinito/brushes/layers.
 
 ## [MORNO] Segurança específica
 

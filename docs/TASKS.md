@@ -47,7 +47,7 @@ Change these only with the author's sign-off (some are noted as the author's cal
 ## Phase 1a — Native editor (the first half of the MVP, a real milestone)
 
 ### T0 — Project scaffold ✅ (done)
-- [x] T0.1 Xcode SwiftUI app (iOS 26, Swift 6, strict concurrency) via XcodeGen. Native folder structure from `ARCHITECTURE.md`: `App/`, `Vault/`, `Search/`, `EditorHost/`, `Sync/`, `Bridge/` + stubbed `Ink/`, `AI/`, `Plugins/`.
+- [x] T0.1 Xcode SwiftUI app (iOS 26, Swift 6, strict concurrency) via XcodeGen. Native folder structure from `ARCHITECTURE.md`: `App/`, `Vault/`, `Search/`, `EditorHost/`, `Sync/`, `Bridge/` + initially stubbed `Ink/`, `AI/`, `Plugins/`.
 - [x] T0.2 `web/` (TypeScript + esbuild) producing a bundle, copied into the app's resources by `scripts/build-web.sh` (also an Xcode pre-build phase).
 - **DoD met:** `make build` → **BUILD SUCCEEDED** for the simulator; the web bundle ships inside `Flint.app/web/`; empty SwiftUI shell.
 
@@ -98,7 +98,9 @@ Change these only with the author's sign-off (some are noted as the author's cal
 
 ## Phase 1b — Ink (the differentiator that completes the MVP)
 
-> Scope is **locked**: one page, paper templates, save, embed, open. **No** infinite canvas, custom brushes, or layers. See ADR-008.
+> **Legacy tracker — superseded.** This section records the pre-ADR-012 one-page Ink scope and is not the active source of truth. The current multi-page notebook scope, acceptance criteria, and task history live in [`specs/001-ink-canvas/`](../specs/001-ink-canvas/) and [ADR-012](DECISIONS.md#adr-012--ink-mvp-promoted-from-a-single-drawing-to-a-multi-page-notebook). Do not use the checklist below to plan or assess the Ink slice.
+
+### Historical T6/T7 scope (superseded by ADR-012)
 
 ### T6 — Ink canvas
 - [ ] T6.1 A native `PKCanvasView` page (palm rejection/latency come free from PencilKit) with a tool picker.

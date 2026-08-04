@@ -8,11 +8,14 @@
 
 The **editor track ("A" from ADR-010) is substantially built**: opens a user-chosen vault (document picker + security-scoped bookmark), folder/note navigation, native-fluid Markdown editing with live preview (CodeMirror 6 over the `flint://` scheme + typed bridge), full-text search (SQLite FTS5 via GRDB — built and tested), frontmatter/tags, iCloud Drive sync with 3-way merge (`Diff3`) + `.conflict` fallback, dark/light theme, and the full design system + tokens pipeline.
 
-**Ink, AI, and Plugins are stubs** (~10 lines each). The app is not yet a daily-driver — remaining editor gaps for full Obsidian-iOS replacement are to be confirmed (see Next #1). Legacy artifacts: old-format specs in `docs/specs/_legacy/`, Phase-1 tracker in `docs/TASKS.md`.
+**Ink is implemented as a multi-page notebook** (ADR-012): `InkNotebook` persists `.ink` notebooks of PencilKit pages; `InkCanvasView` supplies the fixed page and native zoom/pan; `InkRenderer` produces thumbnails; `InkPageOverview` supports navigation, add/delete/reorder; and `InkScreen` hosts the native notebook UI. The editor seam is present too: `web/src/inkEmbed.ts` renders page-1 thumbnails and opens notebooks through the typed bridge, including `Bridge.inkThumbnailPNG`.
+
+**AI and Plugins remain stubs** (~10 lines each). The app is not yet a daily-driver — remaining editor gaps for full Obsidian-iOS replacement are to be confirmed (see Next #1). Legacy artifacts: old-format specs in `docs/specs/_legacy/`, Phase-1 tracker in `docs/TASKS.md`.
 
 ## Now (in flight — max 1-2 slices)
 
 - [ ] **Ink Notebook (MVP)** — tier **T1**. The differentiator; the slice that crosses the "valley of death" (ADR-010: ship v1 when Ink lands). A GoodNotes-style handwriting **notebook**: `PKCanvasView` pages (native palm rejection + low latency, zoom/pan), per-page paper (blank/lined/grid/dotted), multi-page navigation + add/delete/reorder with thumbnails, saved as **its own `.ink` file** (a JSON notebook of PencilKit pages), embedded in notes via `![[notebook.ink]]` (editor shows a thumbnail of page 1; tap opens the notebook).
+  - **Status:** code for the six handoff PRs is delivered and the automated gate is green; **manual acceptance is pending**. Keep this slice in Now until that acceptance is completed.
   - **Riskiest hypothesis it attacks:** native ink *as a separate notebook/file* is good enough to leave GoodNotes, and the embed seam works **without** the inline native-over-webview compositing nightmare (deferred by design, ADR-008).
   - **Scope:** multi-page notebook, zoom, per-page paper, thumbnails/reorder, embed, open. **Out (deferred):** PDF annotation (→ Later, Ink 002), inline-in-text compositing, lasso/shape recognition, custom brushes beyond PKToolPicker.
   - Handoff (6 PRs, in order): `specs/001-ink-canvas/HANDOFF.md`.
