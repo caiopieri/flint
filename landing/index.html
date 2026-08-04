@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flint — Your mind, without barriers</title>
+<meta name="description" content="Write, sketch by hand, and connect every idea — with AI that lives inside your notes. Local-first, open source, and truly yours.">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<style>
+/* ════════════════════════════════════════════════════════════════
+   Flint landing — tokens mirrored from docs/design/tokens/tokens.json
+   Native type only (ADR-D04): New York / SF Pro / SF Mono.
+   ════════════════════════════════════════════════════════════════ */
+:root{
+  --warm-0:#FFFFFF; --warm-50:#FCFBF7; --warm-100:#F7F5F0; --warm-150:#E4E1D9;
+  --warm-200:#C9C7C0; --warm-300:#A9A79F; --warm-400:#888780; --warm-500:#6B6A64;
+  --warm-600:#5F5E5A; --warm-700:#444441; --warm-800:#2C2C2A; --warm-850:#232220;
+  --warm-900:#1A1917;
+  --spark-300:#FAC775; --spark-500:#EF9F27; --spark-700:#B5740C; --spark-800:#9A6206;
+  --spark-selection:rgba(239,159,39,.22);
+
+  --bg:var(--warm-900); --surface:var(--warm-850); --surface-raised:var(--warm-800);
+  --border:var(--warm-700); --border-subtle:var(--warm-800);
+  --text:#EDEBE6; --text-2:var(--warm-300); --text-3:var(--warm-400);
+  --accent:var(--spark-500); --on-accent:var(--warm-900);
+
+  --serif:ui-serif,"New York",Charter,Georgia,serif;
+  --sans:ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+
+  --r-sm:6px; --r-md:10px; --r-lg:16px; --r-xl:22px;
+  --ease:cubic-bezier(.2,0,0,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:var(--sans); font-size:17px; line-height:1.6;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--spark-selection)}
+a{color:inherit;text-decoration:none}
+#why,#roadmap,#open-source,#waitlist{scroll-margin-top:74px}
+
+/* grain */
+body::before{
+  content:""; position:fixed; inset:0; z-index:50; pointer-events:none; opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── Nav ─────────────────────────────────────────────────────── */
+nav{
+  position:fixed; top:0; left:0; right:0; z-index:40;
+  display:flex; align-items:center; gap:28px;
+  padding:12px 32px;
+  background:transparent;
+  border-bottom:1px solid transparent;
+  transition:background .3s var(--ease), border-color .3s var(--ease);
+}
+nav.scrolled{
+  background:color-mix(in srgb,var(--warm-900) 78%,transparent);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+  border-bottom-color:var(--border-subtle);
+}
+.brand{display:flex;align-items:center;gap:12px;font-weight:700;font-size:21px;letter-spacing:-.01em}
+.brand img{width:40px;height:40px;display:block}
+.nav-links{display:flex;gap:24px;margin:0 auto;font-size:15px;color:var(--text-2)}
+.nav-links a{transition:color .2s var(--ease)}
+.nav-links a:hover{color:var(--text)}
+.nav-right{display:flex;align-items:center;gap:12px;margin-left:auto}
+.lang{
+  font-family:var(--mono);font-size:12px;color:var(--text-2);
+  border:1px solid var(--border);border-radius:99px;padding:7px 14px;cursor:pointer;
+  background:transparent; transition:all .2s var(--ease);
+}
+.lang:hover{color:var(--text);border-color:var(--warm-500)}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--sans);font-size:15px;font-weight:600;
+  padding:10px 20px;border-radius:var(--r-md);
+  border:1px solid var(--border); color:var(--text);
+  transition:all .2s var(--ease); cursor:pointer; background:transparent;
+}
+.btn:hover{border-color:var(--warm-500)}
+.btn-spark{background:var(--accent);color:var(--on-accent);border-color:transparent}
+.btn-spark:hover{background:var(--spark-300);border-color:transparent}
+.btn.sm{padding:8px 14px;font-size:14px}
+
+/* ════════════════════════════════════════════════════════════════
+   Hero + scroll narrative (one sticky stage)
+   ════════════════════════════════════════════════════════════════ */
+.scroller{position:relative}
+.stage{
+  position:sticky; top:0; height:100vh; height:100svh;
+  overflow:hidden;
+}
+.stage::before{
+  content:""; position:absolute; inset:0;
+  background:
+    radial-gradient(52% 46% at 50% 46%, rgba(239,159,39,.10), transparent 70%),
+    radial-gradient(80% 60% at 50% 110%, rgba(239,159,39,.06), transparent 60%);
+}
+
+/* hero copy */
+.hero-copy{
+  position:absolute; z-index:4;
+  left:max(32px,5vw); top:15vh;
+  will-change:transform,opacity;
+}
+.hero-copy h1{
+  font-family:var(--serif); font-weight:700; letter-spacing:-.025em;
+  font-size:clamp(52px,8.2vw,120px); line-height:1.02;
+}
+.hero-copy h1 .spark-glyph{display:inline-block;width:.62em;height:.62em;vertical-align:-.02em;margin:0 .04em}
+.hero-sub{
+  position:absolute; z-index:6;
+  left:max(32px,5vw); bottom:9vh; width:min(480px,42vw);
+  will-change:transform,opacity;
+}
+.hero-sub p{color:var(--text-2);font-size:17.5px;max-width:44ch;margin-bottom:24px}
+.hero-sub p .em{color:var(--text)}
+.waitlist{display:flex;gap:10px;flex-wrap:wrap}
+.waitlist input{
+  flex:1; min-width:210px;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md);
+  color:var(--text); font-family:var(--sans); font-size:15px; padding:11px 16px;
+  outline:none; transition:border-color .2s var(--ease);
+}
+.waitlist input::placeholder{color:var(--text-3)}
+.waitlist input:focus{border-color:var(--spark-700)}
+.micro{
+  margin-top:14px; font-family:var(--mono); font-size:11.5px; letter-spacing:.02em; color:var(--text-3);
+}
+.hero-aside{
+  position:absolute; z-index:6; right:max(32px,5vw); bottom:9vh;
+  width:236px; padding:18px 20px;
+  background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--r-lg);
+  font-size:13.5px; color:var(--text-2);
+  will-change:transform,opacity;
+}
+.hero-aside .row{display:flex;align-items:center;gap:10px;margin-top:14px}
+.hero-aside img{width:30px;height:30px}
+
+/* ghost word */
+.ghost{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  font-family:var(--serif); font-weight:700; white-space:nowrap;
+  font-size:clamp(90px,15vw,220px); letter-spacing:-.03em;
+  color:transparent; -webkit-text-stroke:1px var(--warm-700);
+  opacity:0; will-change:transform,opacity; user-select:none;
+}
+
+/* ── Phone ───────────────────────────────────────────────────── */
+.phone-wrap{
+  position:absolute; left:50%; top:50%; z-index:5;
+  will-change:transform;
+}
+.phone{
+  position:relative; width:340px; height:696px;
+  background:#0d0d0c;
+  border-radius:56px;
+  border:1px solid var(--warm-600);
+  box-shadow:
+    inset 0 0 0 5px #000,
+    inset 0 0 0 6px var(--warm-700),
+    0 40px 90px -20px rgba(0,0,0,.7),
+    0 0 120px -30px rgba(239,159,39,.25);
+  padding:14px;
+}
+.phone::after{
+  content:""; position:absolute; top:26px; left:50%; transform:translateX(-50%);
+  width:110px; height:32px; background:#000; border-radius:20px; z-index:6;
+}
+.viewport{
+  position:relative; width:100%; height:100%;
+  border-radius:43px; overflow:hidden; background:var(--warm-850);
+}
+.screens{position:absolute; inset:0; will-change:transform}
+.screen{
+  position:absolute; inset:0;
+  display:flex; flex-direction:column;
+  will-change:transform;
+  font-size:13.5px;
+}
+.statusbar{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:20px 26px 8px; font-size:12.5px; font-weight:600; flex:none;
+}
+.statusbar .right{display:flex;gap:5px;align-items:center;opacity:.85}
+
+/* editor-ish screens (write / connect) */
+.s-dark{background:var(--warm-850)}
+.doc{padding:14px 22px; font-family:var(--serif); line-height:1.55; color:var(--text)}
+.doc[contenteditable]{outline:none; cursor:text; caret-color:var(--spark-500); flex:1}
+.doc[contenteditable]:focus .caret-line{display:none}
+.doc h4{font-size:19px;margin-bottom:10px}
+.doc p{font-size:13.5px;color:var(--text-2);margin-bottom:10px}
+.doc .wl{color:var(--accent)}
+.doc .mk{color:var(--warm-500)}
+.doc .b{color:var(--text);font-weight:700}
+.doc .q{border-left:2px solid var(--spark-700);padding-left:10px;color:var(--text-2);font-style:italic}
+.caret-line{display:inline-block;width:2px;height:15px;background:var(--accent);vertical-align:-2px;animation:blink 1.1s steps(1) infinite}
+.embed{
+  margin:10px 0; border:1px solid var(--border); border-radius:var(--r-md);
+  background:var(--warm-50); height:104px; position:relative; overflow:hidden;
+}
+.embed svg{position:absolute;inset:0;width:100%;height:100%}
+.backlinks{
+  margin:12px 22px 0; padding:12px 14px;
+  background:var(--surface-raised); border:1px solid var(--border-subtle);
+  border-radius:var(--r-md); font-family:var(--sans);
+}
+.backlinks .bl-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-3);margin-bottom:8px}
+.backlinks .bl-item{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-2);padding:5px 0}
+.backlinks .bl-item span{color:var(--accent)}
+.tagrow{display:flex;gap:8px;margin:12px 22px 0;font-family:var(--mono);font-size:11.5px}
+.tagrow .tg{color:var(--spark-300);background:var(--spark-selection);border-radius:99px;padding:3px 10px}
+
+/* ink screen */
+.s-ink{background:var(--warm-50); color:var(--warm-900)}
+.s-ink .statusbar{color:var(--warm-900)}
+.s-ink .canvas{flex:1; position:relative; margin:6px 14px;}
+.s-ink .canvas svg{position:absolute;inset:0;width:100%;height:100%}
+.inkbar{
+  flex:none; margin:0 14px 18px; padding:10px 16px;
+  background:var(--warm-0); border:1px solid var(--warm-150); border-radius:18px;
+  display:flex; align-items:center; justify-content:space-around;
+  box-shadow:0 8px 24px rgba(26,25,23,.10);
+}
+.tool{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--warm-100)}
+.tool.active{background:var(--spark-selection);outline:1.5px solid var(--spark-700)}
+.swatch{width:18px;height:18px;border-radius:50%;border:2px solid var(--warm-0);box-shadow:0 0 0 1px var(--warm-150)}
+
+/* search screen */
+.searchfield{
+  margin:10px 18px 6px; padding:11px 14px;
+  background:var(--surface-raised); border:1px solid var(--border);
+  border-radius:12px; display:flex; align-items:center; gap:9px;
+  font-size:14px; color:var(--text);
+}
+.searchfield .caret{width:2px;height:16px;background:var(--accent);animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.result{
+  margin:8px 18px 0; padding:12px 14px;
+  background:var(--surface); border:1px solid var(--border-subtle); border-radius:var(--r-md);
+}
+.result .r-file{display:flex;justify-content:space-between;font-size:12px;color:var(--text-3);margin-bottom:5px;font-family:var(--mono)}
+.result .r-text{font-size:13px;color:var(--text-2);font-family:var(--serif)}
+.result mark{background:var(--spark-selection);color:var(--spark-300);border-radius:3px;padding:0 2px}
+.r-count{margin:12px 18px 0;font-size:11.5px;color:var(--text-3);font-family:var(--mono)}
+
+/* sync screen */
+.filelist{margin:6px 18px 0}
+.file{
+  display:flex;align-items:center;gap:11px;
+  padding:11px 12px;margin-top:8px;
+  background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--r-md);
+}
+.file .f-ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--surface-raised);flex:none}
+.file .f-name{font-size:13.5px}
+.file .f-meta{font-size:11px;color:var(--text-3);font-family:var(--mono)}
+.file .f-state{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--spark-300)}
+.file .f-state.m{color:var(--text-3)}
+.sync-status{
+  margin:14px 18px 0;padding:11px 14px;display:flex;align-items:center;gap:9px;
+  border:1px solid var(--border-subtle);border-radius:var(--r-md);
+  font-family:var(--mono);font-size:11.5px;color:var(--text-3);
+}
+.sync-status .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+
+/* AI screen */
+.chat{flex:1;display:flex;flex-direction:column;gap:10px;padding:14px 18px}
+.bubble{max-width:82%;padding:10px 14px;border-radius:16px;font-size:13.5px;line-height:1.45}
+.bubble.user{align-self:flex-end;background:var(--surface-raised);border:1px solid var(--border);border-bottom-right-radius:5px}
+.bubble.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--border-subtle);border-bottom-left-radius:5px;color:var(--text-2)}
+.bubble.ai .wl{color:var(--accent)}
+.ai-badge{
+  align-self:center;display:flex;gap:6px;align-items:center;
+  font-size:10.5px;font-family:var(--mono);color:var(--text-3);
+  border:1px solid var(--border);border-radius:99px;padding:4px 10px;margin-top:2px;
+}
+.ai-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+
+/* ── Floating cards ──────────────────────────────────────────── */
+.fcard{
+  position:absolute; z-index:5;
+  background:color-mix(in srgb,var(--warm-800) 88%,transparent);
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+  border:1px solid var(--border); border-radius:var(--r-lg);
+  padding:14px 18px; box-shadow:0 24px 60px -18px rgba(0,0,0,.6);
+  opacity:0; will-change:transform,opacity;
+  font-size:13px;
+}
+.fcard .f-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--text-3);margin-bottom:6px}
+.fcard .f-big{font-family:var(--serif);font-size:20px;font-weight:700}
+.fcard .f-big.mono{font-family:var(--mono);font-size:16px;font-weight:400}
+.fcard .f-sub{color:var(--text-2);font-size:12.5px}
+.fcard.chip{border-radius:99px;padding:9px 16px;display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:12px;color:var(--text-2)}
+.fcard.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.fcard.light{background:color-mix(in srgb,var(--warm-50) 92%,transparent);color:var(--warm-900);border-color:var(--warm-150)}
+.fcard.light .f-label{color:var(--warm-500)}
+.fcard.light .f-sub{color:var(--warm-500)}
+
+/* ── Scene copy blocks ───────────────────────────────────────── */
+.copy{
+  position:absolute; top:50%; width:min(420px,34vw);
+  transform:translateY(-50%);
+  opacity:0; will-change:transform,opacity; z-index:8;
+}
+.copy.left{left:max(32px,6vw)}
+.copy.right{right:max(32px,6vw)}
+.kicker{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--accent);
+}
+.copy .kicker::before{content:"";width:22px;height:1.5px;background:var(--accent)}
+.copy .kicker{margin-bottom:18px}
+.copy h2{
+  font-family:var(--serif); font-weight:700; letter-spacing:-.02em;
+  font-size:clamp(32px,3.6vw,50px); line-height:1.08; margin-bottom:20px;
+}
+.copy p{color:var(--text-2);font-size:16.5px;max-width:38ch}
+.copy .em{color:var(--text)}
+
+/* scroll cue */
+.cue{
+  position:absolute; bottom:26px; left:calc(50% - 265px); transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:11px; letter-spacing:.15em; text-transform:uppercase;
+  color:var(--text-3); z-index:9; will-change:opacity;
+}
+.cue .line{width:1px;height:34px;background:linear-gradient(var(--warm-500),transparent);animation:drip 1.8s var(--ease) infinite}
+@keyframes drip{0%{transform:scaleY(.2);transform-origin:top}55%{transform:scaleY(1)}100%{opacity:0}}
+
+/* progress rail */
+.rail{
+  position:absolute; right:26px; top:50%; transform:translateY(-50%);
+  display:flex; flex-direction:column; gap:14px; z-index:9;
+  opacity:0; transition:opacity .3s var(--ease);
+}
+.rail .tick{width:6px;height:6px;border-radius:50%;background:var(--warm-700);transition:all .3s var(--ease)}
+.rail .tick.on{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+
+/* ════════════════════════════════════════════════════════════════
+   Static sections
+   ════════════════════════════════════════════════════════════════ */
+section.flat{padding:130px 32px; max-width:1180px; margin:0 auto}
+.flat h2{
+  font-family:var(--serif); font-weight:700; letter-spacing:-.02em;
+  font-size:clamp(34px,4vw,54px); line-height:1.1; margin:16px 0 18px; max-width:20ch;
+}
+.flat .lede{color:var(--text-2);max-width:60ch;font-size:17px}
+.flat .lede .em{color:var(--text)}
+
+/* comparison table */
+.compare{margin-top:52px; overflow-x:auto}
+.compare table{
+  border-collapse:separate; border-spacing:0; width:100%; min-width:640px;
+  font-size:15px;
+}
+.compare th,.compare td{padding:14px 18px; text-align:center; border-bottom:1px solid var(--border-subtle)}
+.compare th{font-family:var(--mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-3); font-weight:500}
+.compare td:first-child,.compare th:first-child{text-align:left}
+.compare td:first-child{font-weight:600}
+.compare .muted{color:var(--text-3); font-size:13.5px}
+.compare .yes{color:var(--spark-300)}
+.compare .no{color:var(--warm-500)}
+.compare tr.flint td{
+  background:color-mix(in srgb,var(--spark-500) 7%,transparent);
+  border-top:1px solid var(--spark-700); border-bottom:1px solid var(--spark-700);
+}
+.compare tr.flint td:first-child{color:var(--accent);border-left:2px solid var(--spark-500)}
+
+/* differentiator steps */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:52px}
+.step{
+  background:var(--surface); border:1px solid var(--border-subtle);
+  border-radius:var(--r-xl); padding:28px;
+}
+.step .n{font-family:var(--mono);font-size:12px;color:var(--accent);margin-bottom:14px}
+.step h3{font-family:var(--serif);font-size:21px;margin-bottom:8px}
+.step p{color:var(--text-2);font-size:15px}
+
+/* pillars */
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:52px}
+.pillar{
+  background:var(--surface); border:1px solid var(--border-subtle);
+  border-radius:var(--r-xl); padding:28px 26px;
+  transition:border-color .25s var(--ease), transform .25s var(--ease);
+}
+.pillar:hover{border-color:var(--border);transform:translateY(-3px)}
+.pillar .glyph{
+  width:42px;height:42px;border-radius:12px;display:grid;place-items:center;
+  background:var(--surface-raised);border:1px solid var(--border);margin-bottom:18px;
+}
+.pillar h3{font-family:var(--serif);font-size:20px;margin-bottom:8px}
+.pillar p{color:var(--text-2);font-size:14.5px}
+
+/* AI flag */
+.ai-flag{
+  display:inline-flex;align-items:center;gap:8px;margin-top:26px;
+  font-family:var(--mono);font-size:12.5px;color:var(--text-2);
+  border:1px solid var(--border);border-radius:99px;padding:8px 16px;
+}
+.ai-flag .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.ai-flag a{color:var(--accent)}
+.ai-flag a:hover{color:var(--spark-300)}
+
+/* ── Roadmap timeline ────────────────────────────────────────── */
+.timeline{margin-top:64px; overflow-x:auto; padding:6px 2px 14px; scrollbar-width:thin}
+.tl-track{
+  position:relative; display:flex; min-width:max-content; height:420px; align-items:center;
+  padding:0 60px;
+}
+.tl-track::before{
+  content:""; position:absolute; left:0; right:0; top:50%; height:2px;
+  background:linear-gradient(90deg,
+    var(--spark-700) 0%, var(--spark-500) 26%,
+    var(--warm-700) 38%, var(--warm-700) 100%);
+}
+.tl-item{position:relative; width:216px; flex:none; height:100%}
+.tl-item .dot{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:13px; height:13px; border-radius:50%; background:var(--warm-700);
+  border:2px solid var(--warm-900); z-index:2;
+}
+.tl-item.done .dot{background:var(--spark-500); box-shadow:0 0 12px rgba(239,159,39,.6)}
+.tl-item.now .dot{
+  background:var(--warm-900); border:2.5px solid var(--spark-500);
+  box-shadow:0 0 0 0 rgba(239,159,39,.5); animation:pulse 2s var(--ease) infinite;
+}
+@keyframes pulse{
+  0%{box-shadow:0 0 0 0 rgba(239,159,39,.45)}
+  70%{box-shadow:0 0 0 14px rgba(239,159,39,0)}
+  100%{box-shadow:0 0 0 0 rgba(239,159,39,0)}
+}
+.tl-card{
+  position:absolute; left:50%; transform:translateX(-50%);
+  width:196px; text-align:center;
+}
+.tl-item:nth-child(odd)  .tl-card{bottom:calc(50% + 34px)}
+.tl-item:nth-child(even) .tl-card{top:calc(50% + 34px)}
+.tl-card::after{ /* stem to the line */
+  content:""; position:absolute; left:50%; width:1px; height:22px; background:var(--warm-700);
+}
+.tl-item:nth-child(odd)  .tl-card::after{top:100%; margin-top:2px}
+.tl-item:nth-child(even) .tl-card::after{bottom:100%; margin-bottom:2px}
+.tl-card .tag{
+  font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--text-3); margin-bottom:7px;
+}
+.tl-item.done .tag,.tl-item.now .tag{color:var(--accent)}
+.tl-card .t{font-family:var(--serif); font-size:17.5px; font-weight:700; line-height:1.25}
+.tl-card .s{font-size:12.5px; color:var(--text-2); margin-top:5px; line-height:1.45}
+.tl-item.future .t{color:var(--text-2)}
+
+/* open source ctas */
+.os-ctas{display:flex;gap:14px;margin-top:32px;flex-wrap:wrap}
+
+/* final CTA */
+.final{
+  text-align:center; padding:150px 32px 130px; position:relative; overflow:hidden;
+}
+.final::before{
+  content:""; position:absolute; inset:0;
+  background:radial-gradient(50% 60% at 50% 100%, rgba(239,159,39,.12), transparent 70%);
+  pointer-events:none;
+}
+.final h2{
+  font-family:var(--serif); font-weight:700; letter-spacing:-.02em;
+  font-size:clamp(40px,5.5vw,74px); line-height:1.05; margin:0 auto 20px; max-width:16ch;
+}
+.final p{color:var(--text-2);max-width:46ch;margin:0 auto 36px}
+.final .waitlist{justify-content:center;max-width:520px;margin:0 auto}
+.final .micro{margin-top:16px}
+
+footer{
+  border-top:1px solid var(--border-subtle);
+  padding:44px 32px; max-width:1180px; margin:0 auto;
+}
+.foot-row{display:flex;align-items:center;gap:18px;color:var(--text-3);font-size:14px;flex-wrap:wrap}
+.foot-row .spacer{flex:1}
+.foot-row a:hover{color:var(--text)}
+.foot-tag{
+  margin-top:26px; font-family:var(--serif); font-style:italic;
+  color:var(--text-3); font-size:15.5px;
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width:1280px){
+  .fcard{display:none !important}
+  .copy{width:min(400px,38vw)}
+  .hero-aside{display:none}
+}
+@media (max-width:900px){
+  .nav-links{display:none}
+  nav{padding:10px 16px;gap:12px}
+  .nav-right .btn-spark{display:none}  /* hero already carries the CTA */
+  .brand{font-size:18px}
+  .brand img{width:34px;height:34px}
+  .phone{width:250px;height:513px;border-radius:44px;padding:11px}
+  .phone::after{top:20px;width:88px;height:26px}
+  .viewport{border-radius:34px}
+  .statusbar{padding:16px 20px 6px}
+  .hero-copy{top:11vh;left:24px;right:24px}
+  .hero-sub{left:24px;right:24px;width:auto;bottom:132px}
+  .hero-sub p{font-size:15.5px;margin-bottom:16px}
+  /* scene copy gets a scrim so it stays legible over the phone */
+  .copy{
+    width:min(480px,calc(100vw - 32px));
+    left:50% !important; right:auto !important;
+    top:auto; bottom:12px; transform:translate(-50%,0);
+    text-align:center;
+    padding:16px 18px 14px;
+    background:color-mix(in srgb,var(--warm-900) 82%,transparent);
+    -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+    border:1px solid var(--border-subtle); border-radius:var(--r-lg);
+  }
+  .copy .kicker{margin-bottom:8px}
+  .copy h2{font-size:clamp(22px,6vw,30px);margin-bottom:8px}
+  .copy p{margin:0 auto;font-size:14px}
+  .ghost{font-size:clamp(70px,18vw,120px)}
+  .rail{right:12px}
+  .cue{display:none}
+  .steps,.grid4{grid-template-columns:1fr}
+  section.flat{padding:90px 24px}
+  .tl-track{height:380px}
+  .tl-item{width:190px}
+}
+@media (max-width:900px) and (max-height:700px){
+  .phone{width:220px;height:451px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .cue .line,.searchfield .caret,.caret-line{animation:none}
+  .tl-item.now .dot{animation:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Nav ─────────────────────────────────────────────────────── -->
+<nav>
+  <a class="brand" href="#">
+    <img src="assets/icon.png" alt="Flint logo">
+    Flint
+  </a>
+  <div class="nav-links">
+    <a href="#why" data-i="nav1">Why Flint</a>
+    <a href="#features" data-i="nav2">Features</a>
+    <a href="#roadmap" data-i="nav3">Roadmap</a>
+    <a href="#open-source" data-i="nav4">Open Source</a>
+  </div>
+  <div class="nav-right">
+    <button class="lang" id="langBtn" type="button">PT-BR</button>
+    <a class="btn sm" href="https://github.com/caiopieri/flint" aria-label="GitHub">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      ★
+    </a>
+    <a class="btn btn-spark sm" href="#waitlist" data-i="join">Join the waitlist</a>
+  </div>
+</nav>
+
+<!-- ════════════════════════════════════════════════════════════════
+     Hero + scroll narrative
+     ════════════════════════════════════════════════════════════════ -->
+<div class="scroller" id="scroller">
+  <div class="stage">
+
+    <div class="hero-copy" id="heroCopy">
+      <h1><span data-i="h1a">Your mind,<br>without</span><svg class="spark-glyph" viewBox="0 0 100 100" aria-hidden="true">
+        <line x1="50" y1="8" x2="50" y2="38" stroke="#EF9F27" stroke-width="9" stroke-linecap="round"/>
+        <line x1="50" y1="62" x2="50" y2="92" stroke="#EF9F27" stroke-width="9" stroke-linecap="round"/>
+        <line x1="8" y1="50" x2="38" y2="50" stroke="#EF9F27" stroke-width="9" stroke-linecap="round"/>
+        <line x1="62" y1="50" x2="92" y2="50" stroke="#EF9F27" stroke-width="9" stroke-linecap="round"/>
+        <line x1="22" y1="22" x2="40" y2="40" stroke="#FAC775" stroke-width="7" stroke-linecap="round"/>
+        <line x1="60" y1="60" x2="78" y2="78" stroke="#FAC775" stroke-width="7" stroke-linecap="round"/>
+      </svg><span data-i="h1b">barriers.</span></h1>
+    </div>
+
+    <div class="hero-sub" id="heroSub">
+      <p data-i="heroP">Write, sketch by hand, and connect every idea — with AI that lives
+         <span class="em">inside your notes</span>. Local-first, open source, and truly yours.</p>
+      <form class="waitlist" data-waitlist>
+        <input type="email" required placeholder="you@email.com" aria-label="Email" data-i-ph="emailPh">
+        <button class="btn btn-spark" type="submit" data-i="join">Join the waitlist</button>
+        <a class="btn" href="https://github.com/caiopieri/flint" data-i="viewGh">View on GitHub</a>
+      </form>
+      <div class="micro" data-i="heroMicro">Free and open source · No account · Your files never leave your device.</div>
+    </div>
+
+    <div class="hero-aside" id="heroAside">
+      <span data-i="aside">Made for people who think in ink <em>and</em> in text — and want both in one place.</span>
+      <div class="row">
+        <img src="assets/icon.png" alt="">
+        <span style="font-family:var(--mono);font-size:11.5px;color:var(--text-3)" data-i="asidePlat">iPad &amp; iPhone first<br>macOS next</span>
+      </div>
+    </div>
+
+    <!-- ghost words -->
+    <div class="ghost" data-ghost="0" data-i="g0">Write</div>
+    <div class="ghost" data-ghost="1" data-i="g1">Sketch</div>
+    <div class="ghost" data-ghost="2" data-i="g2">Connect</div>
+    <div class="ghost" data-ghost="3" data-i="g3">Find</div>
+    <div class="ghost" data-ghost="4" data-i="g4">Sync</div>
+    <div class="ghost" data-ghost="5" data-i="g5">Ask</div>
+
+    <!-- ── phone ── -->
+    <div class="phone-wrap" id="phoneWrap">
+      <div class="phone">
+        <div class="viewport">
+          <div class="screens" id="screens">
+
+            <!-- 0 · write — editable: click the caret, erase, type your own note -->
+            <div class="screen s-dark">
+              <div class="statusbar"><span>9:41</span><span class="right">●●● ⌁ ▮</span></div>
+              <div class="doc" contenteditable="true" spellcheck="false" aria-label="Try typing here" data-i="scrWrite">
+                <h4><span class="mk"># </span>Reading — The Craftsman</h4>
+                <p>Sennett's point: skill is <span class="b">**repetition with variation**</span>, not talent. Ten thousand hours is the folk version; the craft version is <span class="b">**caring about the next rep**</span>.</p>
+                <p class="q">"Craftsmanship names an enduring, basic human impulse: the desire to do a job well for its own sake."</p>
+                <p><span class="mk">- </span>connects to my kiln practice<br>
+                   <span class="mk">- </span>the workshop as a school<br>
+                   <span class="mk">- </span>write weekly review from this<span class="caret-line"></span></p>
+              </div>
+            </div>
+
+            <!-- 1 · ink -->
+            <div class="screen s-ink">
+              <div class="statusbar"><span>9:41</span><span class="right">●●● ⌁ ▮</span></div>
+              <div class="canvas">
+                <svg viewBox="0 0 300 430">
+                  <line x1="0" y1="72" x2="300" y2="72" stroke="#E4E1D9" stroke-width="1"/>
+                  <line x1="0" y1="144" x2="300" y2="144" stroke="#E4E1D9" stroke-width="1"/>
+                  <line x1="0" y1="216" x2="300" y2="216" stroke="#E4E1D9" stroke-width="1"/>
+                  <line x1="0" y1="288" x2="300" y2="288" stroke="#E4E1D9" stroke-width="1"/>
+                  <line x1="0" y1="360" x2="300" y2="360" stroke="#E4E1D9" stroke-width="1"/>
+                  <path d="M28 58 q 10 -26 20 0 q 4 10 -6 10 m 26 -12 q 14 -18 20 2 m 16 -4 q -12 4 -2 12 q 10 6 22 -6"
+                        fill="none" stroke="#1A1917" stroke-width="3" stroke-linecap="round"/>
+                  <path d="M30 128 q 24 -34 44 -6 q 12 18 34 2 q 22 -18 44 4 q 16 14 40 -2"
+                        fill="none" stroke="#1A1917" stroke-width="2.6" stroke-linecap="round" opacity=".85"/>
+                  <path d="M30 196 q 30 -22 52 0 q 18 16 42 0 m 24 -8 q -16 6 -4 16"
+                        fill="none" stroke="#1A1917" stroke-width="2.4" stroke-linecap="round" opacity=".8"/>
+                  <path d="M46 268 q 40 -40 96 -14 q 52 24 112 -10" fill="none" stroke="#B5740C" stroke-width="3.4" stroke-linecap="round"/>
+                  <path d="M232 236 l 26 10 l -22 16" fill="none" stroke="#B5740C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M40 380 C 90 330, 140 420, 200 358 S 260 340, 272 352"
+                        fill="none" stroke="#1A1917" stroke-width="4.4" stroke-linecap="round" opacity=".9"/>
+                </svg>
+              </div>
+              <div class="inkbar">
+                <div class="tool active"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9A6206" stroke-width="2.4" stroke-linecap="round"><path d="M3 21l3.5-1 12-12-2.5-2.5-12 12L3 21z"/></svg></div>
+                <div class="tool"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B6A64" stroke-width="2.2" stroke-linecap="round"><path d="M4 20h9M14 5l4 4L8 19H4v-4L14 5z"/></svg></div>
+                <div class="tool"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B6A64" stroke-width="2.2" stroke-linecap="round"><path d="M6 12h12M12 6v12"/></svg></div>
+                <div class="swatch" style="background:#1A1917"></div>
+                <div class="swatch" style="background:#B5740C"></div>
+                <div class="swatch" style="background:#6B6A64"></div>
+              </div>
+            </div>
+
+            <!-- 2 · connect -->
+            <div class="screen s-dark">
+              <div class="statusbar"><span>9:41</span><span class="right">●●● ⌁ ▮</span></div>
+              <div class="doc">
+                <h4 data-i="scrConnH"><span class="mk"># </span>Field notes — kiln</h4>
+                <p data-i="scrConnP">The second firing cracked at cone 6. Cross-checking against
+                   <span class="wl"><span class="mk">[[</span>Glaze tests<span class="mk">]]</span></span> — the
+                   iron oxide batch behaves differently on <span class="wl"><span class="mk">[[</span>Stoneware<span class="mk">]]</span></span>.</p>
+                <div class="embed">
+                  <svg viewBox="0 0 280 104" preserveAspectRatio="none">
+                    <path d="M18 74 C 40 28, 70 24, 96 52 S 150 92, 178 56 S 230 22, 262 42" fill="none" stroke="#1A1917" stroke-width="2.6" stroke-linecap="round"/>
+                    <path d="M30 88 C 60 68, 90 84, 120 74" fill="none" stroke="#B5740C" stroke-width="2.2" stroke-linecap="round"/>
+                    <circle cx="178" cy="56" r="3.4" fill="#EF9F27"/>
+                    <text x="196" y="90" font-size="11" fill="#888780" font-family="ui-monospace,monospace">![[sketch]]</text>
+                  </svg>
+                </div>
+              </div>
+              <div class="tagrow" data-i="scrTags"><span class="tg">#ceramics</span><span class="tg">#studio</span></div>
+              <div class="backlinks">
+                <div class="bl-title" data-i="scrBl">Linked mentions · 3</div>
+                <div class="bl-item" data-i="scrBl1">↩ <span>Glaze tests</span> — "…cracked at cone 6, see field notes…"</div>
+                <div class="bl-item" data-i="scrBl2">↩ <span>Studio journal</span> — "…kiln session with the new batch…"</div>
+                <div class="bl-item" data-i="scrBl3">↩ <span>Weekly review</span> — "…the kiln thread continues…"</div>
+              </div>
+            </div>
+
+            <!-- 3 · find -->
+            <div class="screen s-dark">
+              <div class="statusbar"><span>9:41</span><span class="right">●●● ⌁ ▮</span></div>
+              <div class="searchfield">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#888780" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <span data-i="scrQ">iron oxide</span><span class="caret"></span>
+              </div>
+              <div class="r-count" data-i="scrCount">142 notes · instant</div>
+              <div class="result" data-i="scrR1">
+                <div class="r-file"><span>kiln/field-notes.md</span><span>today</span></div>
+                <div class="r-text">…the <mark>iron oxide</mark> batch behaves differently on stoneware…</div>
+              </div>
+              <div class="result" data-i="scrR2">
+                <div class="r-file"><span>glaze-tests.md</span><span>2d</span></div>
+                <div class="r-text">…reduce <mark>iron oxide</mark> to 4% and refire at cone 5…</div>
+              </div>
+              <div class="result" data-i="scrR3">
+                <div class="r-file"><span>reading/ceramics-handbook.md</span><span>3w</span></div>
+                <div class="r-text">…<mark>iron oxide</mark> shifts amber under reduction…</div>
+              </div>
+              <div class="result" data-i="scrR4">
+                <div class="r-file"><span>studio-journal.md</span><span>1mo</span></div>
+                <div class="r-text">…ordered 2kg of red <mark>iron oxide</mark> for the fall batch…</div>
+              </div>
+            </div>
+
+            <!-- 4 · sync -->
+            <div class="screen s-dark">
+              <div class="statusbar"><span>9:41</span><span class="right">●●● ⌁ ▮</span></div>
+              <div class="filelist">
+                <div class="file">
+                  <div class="f-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#EF9F27" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+                  <div><div class="f-name" data-i="scrF1">kiln</div><div class="f-meta">12 <span data-i="scrNotes">notes</span></div></div>
+                  <div class="f-state">✓</div>
+                </div>
+                <div class="file">
+                  <div class="f-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#A9A79F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+                  <div><div class="f-name" data-i="scrF2">field-notes.md</div><div class="f-meta" data-i="scrEdited">edited on iPad · 2 min</div></div>
+                  <div class="f-state">✓</div>
+                </div>
+                <div class="file">
+                  <div class="f-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#A9A79F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+                  <div><div class="f-name" data-i="scrF3">weekly-review.md</div><div class="f-meta" data-i="scrMerged">edited on two devices — merged</div></div>
+                  <div class="f-state m">⇄</div>
+                </div>
+                <div class="file">
+                  <div class="f-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#A9A79F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg></div>
+                  <div><div class="f-name">sketches.ink</div><div class="f-meta">4 <span data-i="scrPages">pages</span></div></div>
+                  <div class="f-state">✓</div>
+                </div>
+              </div>
+              <div class="sync-status"><span class="dot"></span> <span data-i="scrSync">iCloud Drive · synced just now</span></div>
+            </div>
+
+            <!-- 5 · ask -->
+            <div class="screen s-dark">
+              <div class="statusbar"><span>9:41</span><span class="right">✈ ⌁ ▮</span></div>
+              <div class="chat">
+                <div class="ai-badge"><span class="dot"></span> <span data-i="scrAiBadge">on your device · airplane mode</span></div>
+                <div class="bubble user" data-i="scrAiQ1">What did I conclude about the cone 6 cracking?</div>
+                <div class="bubble ai" data-i="scrAiA1">Across <span class="wl">[[Kiln log]]</span> and <span class="wl">[[Glaze tests]]</span>, you traced the cracking to the iron oxide batch — your plan: reduce to 4% and refire.</div>
+                <div class="bubble user" data-i="scrAiQ2">Draft a note linking the three experiments.</div>
+                <div class="bubble ai" data-i="scrAiA2">Drafted <span class="wl">[[Cone 6 — synthesis]]</span> with links and open questions. Nothing left this device.</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── floating cards — always opposite the copy ── -->
+    <!-- 0 write · copy left → cards right -->
+    <div class="fcard" data-scene="0" data-x="25" data-y="-22" data-depth="1.15" style="width:205px">
+      <div class="f-label" data-i="c0aL">Live preview</div>
+      <div class="f-big" data-i="c0aB">As you type</div>
+      <div class="f-sub" data-i="c0aS">Headings, bold and lists take shape while you write — no preview mode.</div>
+    </div>
+    <div class="fcard chip" data-scene="0" data-x="33" data-y="2" data-depth="0.85"><span class="dot"></span> <span data-i="c0bC">native speed, no lag</span></div>
+    <div class="fcard" data-scene="0" data-x="26" data-y="22" data-depth="1.3" style="width:200px">
+      <div class="f-label" data-i="c0cL">Plain files</div>
+      <div class="f-big" data-i="c0cB">Yours forever</div>
+      <div class="f-sub" data-i="c0cS">Every note is a simple file in your folder — it opens in any app, today or in 30 years.</div>
+    </div>
+
+    <!-- 1 sketch · copy right → cards left -->
+    <div class="fcard light" data-scene="1" data-x="-26" data-y="-22" data-depth="1.2" style="width:205px">
+      <div class="f-label" data-i="c1aL">Apple Pencil</div>
+      <div class="f-big" data-i="c1aB">Feels like paper</div>
+      <div class="f-sub" data-i="c1aS">Pressure, tilt, zoom — pages that respond like a real notebook.</div>
+    </div>
+    <div class="fcard chip" data-scene="1" data-x="-33" data-y="2" data-depth="0.9"><span class="dot"></span> <span data-i="c1bC">in the works — on the roadmap</span></div>
+    <div class="fcard" data-scene="1" data-x="-26" data-y="22" data-depth="1.25" style="width:210px">
+      <div class="f-label" data-i="c1cL">Real notebooks</div>
+      <div class="f-big" data-i="c1cB">Pages &amp; paper</div>
+      <div class="f-sub" data-i="c1cS">Lined, grid, dotted or blank — with thumbnails to flip through.</div>
+    </div>
+
+    <!-- 2 connect · copy left → cards right -->
+    <div class="fcard" data-scene="2" data-x="25" data-y="-22" data-depth="1.2" style="width:205px">
+      <div class="f-label" data-i="c2aL">One gesture</div>
+      <div class="f-big mono">[[&#8201;]]</div>
+      <div class="f-sub" data-i="c2aS">Two brackets link any thought to any other. That's the whole trick.</div>
+    </div>
+    <div class="fcard chip" data-scene="2" data-x="33" data-y="2" data-depth="0.85"><span class="dot"></span> <span data-i="c2bC">backlinks, automatic</span></div>
+    <div class="fcard" data-scene="2" data-x="26" data-y="22" data-depth="1.3" style="width:205px">
+      <div class="f-label" data-i="c2cL">Nothing lost</div>
+      <div class="f-big" data-i="c2cB">Ideas resurface</div>
+      <div class="f-sub" data-i="c2cS">Every note shows what points back to it — old thinking returns on its own.</div>
+    </div>
+
+    <!-- 3 find · copy right → cards left -->
+    <div class="fcard" data-scene="3" data-x="-26" data-y="-22" data-depth="1.2" style="width:200px">
+      <div class="f-label" data-i="c3aL">All of it</div>
+      <div class="f-big" data-i="c3aB">Every word</div>
+      <div class="f-sub" data-i="c3aS">Years of notes, searched as fast as you can type.</div>
+    </div>
+    <div class="fcard chip" data-scene="3" data-x="-33" data-y="2" data-depth="0.9"><span class="dot"></span> <span data-i="c3bC">works offline, always</span></div>
+    <div class="fcard" data-scene="3" data-x="-26" data-y="22" data-depth="1.28" style="width:205px">
+      <div class="f-label" data-i="c3cL">No tidying required</div>
+      <div class="f-big" data-i="c3cB">Just type</div>
+      <div class="f-sub" data-i="c3cS">No folders to remember, no tags to maintain. Search finds it.</div>
+    </div>
+
+    <!-- 4 sync · copy left → cards right -->
+    <div class="fcard" data-scene="4" data-x="25" data-y="-22" data-depth="1.2" style="width:205px">
+      <div class="f-label" data-i="c4aL">Your iCloud</div>
+      <div class="f-big" data-i="c4aB">Your folder</div>
+      <div class="f-sub" data-i="c4aS">Flint syncs through a folder you own — not an account on our servers.</div>
+    </div>
+    <div class="fcard chip" data-scene="4" data-x="33" data-y="2" data-depth="0.85"><span class="dot"></span> <span data-i="c4bC">edits merge cleanly</span></div>
+    <div class="fcard" data-scene="4" data-x="26" data-y="22" data-depth="1.3" style="width:205px">
+      <div class="f-label" data-i="c4cL">No lock-in</div>
+      <div class="f-big" data-i="c4cB">Leave anytime</div>
+      <div class="f-sub" data-i="c4cS">Delete Flint and your notes are still there — a folder of files, intact.</div>
+    </div>
+
+    <!-- 5 ask · copy right → cards left -->
+    <div class="fcard" data-scene="5" data-x="-26" data-y="-22" data-depth="1.2" style="width:210px">
+      <div class="f-label" data-i="c5aL">Your memory, answering</div>
+      <div class="f-big" data-i="c5aB">Ask anything</div>
+      <div class="f-sub" data-i="c5aS">"What did I decide?" "Summarize this messy week." It knows, because you wrote it.</div>
+    </div>
+    <div class="fcard chip" data-scene="5" data-x="-33" data-y="2" data-depth="0.9"><span class="dot"></span> <span data-i="c5bC">coming — see the roadmap</span></div>
+    <div class="fcard" data-scene="5" data-x="-26" data-y="22" data-depth="1.28" style="width:205px">
+      <div class="f-label" data-i="c5cL">Privacy</div>
+      <div class="f-big" data-i="c5cB">Stays with you</div>
+      <div class="f-sub" data-i="c5cS">On-device by default, or your own key. Never our servers.</div>
+    </div>
+
+    <!-- ── scene copy blocks ── -->
+    <div class="copy left" data-copy="0">
+      <div class="kicker" data-i="k0">Write</div>
+      <h2 data-i="t0">Writing that gets out of the way.</h2>
+      <p data-i="p0">A fast, native markdown editor over a folder of plain files. No blocks, no databases — <span class="em">just your words, beautifully set</span>.</p>
+    </div>
+
+    <div class="copy right" data-copy="1">
+      <div class="kicker" data-i="k1">Sketch</div>
+      <h2 data-i="t1">Think with your hands.</h2>
+      <p data-i="p1">Real handwriting notebooks for your Apple Pencil — pages, paper, zoom. Sketch a diagram and <span class="em">embed it in any note</span>.</p>
+    </div>
+
+    <div class="copy left" data-copy="2">
+      <div class="kicker" data-i="k2">Connect</div>
+      <h2 data-i="t2">Every idea finds its place.</h2>
+      <p data-i="p2">Link any thought to any other with two brackets. Your notes stop being a pile and become <span class="em">a map of how you think</span>.</p>
+    </div>
+
+    <div class="copy right" data-copy="3">
+      <div class="kicker" data-i="k3">Find</div>
+      <h2 data-i="t3">Remember everything you wrote.</h2>
+      <p data-i="p3">Type a few letters and every mention — from last week or years ago — is <span class="em">already on screen</span>. Even offline.</p>
+    </div>
+
+    <div class="copy left" data-copy="4">
+      <div class="kicker" data-i="k4">Sync</div>
+      <h2 data-i="t4">Everywhere — and still yours.</h2>
+      <p data-i="p4">Notes sync through your own iCloud folder and <span class="em">merge cleanly across devices</span>. Every note stays a plain file you can open anywhere.</p>
+    </div>
+
+    <div class="copy right" data-copy="5">
+      <div class="kicker" data-i="k5">Ask</div>
+      <h2 data-i="t5">Your notes, talking back.</h2>
+      <p data-i="p5">Ask questions, get summaries, connect the dots — with AI that works <span class="em">on your device</span>, on your terms.</p>
+    </div>
+
+    <div class="cue" id="cue"><span data-i="cue">Scroll</span><span class="line"></span></div>
+
+    <div class="rail" id="rail" aria-hidden="true">
+      <div class="tick on"></div><div class="tick"></div><div class="tick"></div>
+      <div class="tick"></div><div class="tick"></div><div class="tick"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     Why Flint
+     ════════════════════════════════════════════════════════════════ -->
+<section class="flat" id="why">
+  <div class="kicker" data-i="whyK">Why Flint</div>
+  <h2 data-i="whyT">Three apps. None of them whole.</h2>
+  <p class="lede" data-i="whyP">You handwrite in GoodNotes, but it can't link a thought to anything. You connect ideas
+     in Obsidian, but its handwriting is an afterthought. You let AI help in Notion, but your notes live
+     on someone else's servers. <span class="em">Flint is the one place that does all three — and keeps it yours.</span></p>
+
+  <div class="compare">
+    <table>
+      <thead>
+        <tr><th></th><th>Markdown</th><th>Apple Pencil</th><th data-i="thAI">Native AI</th><th data-i="thOS">Open source</th><th>Local-first</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Obsidian</td><td class="yes">✓</td><td class="no">✗</td><td class="muted">plugins</td><td class="no">✗</td><td class="yes">✓</td></tr>
+        <tr><td>GoodNotes</td><td class="no">✗</td><td class="yes">✓</td><td class="muted" data-i="tdLim">limited</td><td class="no">✗</td><td class="no">✗</td></tr>
+        <tr><td>Notion</td><td class="muted" data-i="tdPart">partial</td><td class="no">✗</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+        <tr class="flint"><td>Flint</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     The differentiator
+     ════════════════════════════════════════════════════════════════ -->
+<section class="flat">
+  <div class="kicker" data-i="difK">The difference</div>
+  <h2 data-i="difT">Handwriting, finally at home in your knowledge.</h2>
+  <p class="lede" data-i="difP">Real Apple Pencil notebooks — pages, paper, zoom — sitting right next to your markdown
+     notes, your links, and your canvas. Nothing is trapped in a silo.</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="n">01</div>
+      <h3 data-i="st1T">Sketch a diagram</h3>
+      <p data-i="st1P">On a page that feels like paper, with the pen you already love.</p>
+    </div>
+    <div class="step">
+      <div class="n">02</div>
+      <h3 data-i="st2T">Drop it into a note</h3>
+      <p data-i="st2P">Embed the drawing in your writing — it stays live, not a dead screenshot.</p>
+    </div>
+    <div class="step">
+      <div class="n">03</div>
+      <h3 data-i="st3T">Connect it to anything</h3>
+      <p data-i="st3P">Link a handwritten page to an idea from last year. It's all one mind.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     Principles
+     ════════════════════════════════════════════════════════════════ -->
+<section class="flat">
+  <div class="kicker" data-i="prK">Built on principles you own</div>
+  <h2 data-i="prT">Your notes. Your files. Your rules.</h2>
+
+  <div class="grid4">
+    <div class="pillar">
+      <div class="glyph"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#EF9F27" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M2 9h20"/></svg></div>
+      <h3 data-i="p1T">Local-first</h3>
+      <p data-i="p1P">Works fully offline. No account, no cloud required, nothing phones home by default.</p>
+    </div>
+    <div class="pillar">
+      <div class="glyph"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#EF9F27" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+      <h3 data-i="p2T">Plain text, forever</h3>
+      <p data-i="p2P">Every note is a plain markdown file. Open them anywhere, leave anytime — there's no lock-in to leave.</p>
+    </div>
+    <div class="pillar">
+      <div class="glyph"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#EF9F27" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg></div>
+      <h3 data-i="p3T">Open source</h3>
+      <p data-i="p3P">MIT-licensed and built in the open. Read the code, shape it, fork it.</p>
+    </div>
+    <div class="pillar">
+      <div class="glyph"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#EF9F27" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+      <h3 data-i="p4T">Private by design</h3>
+      <p data-i="p4P">Your writing stays on your device. Sync and backup are opt-in, and under your control.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     AI, on your terms
+     ════════════════════════════════════════════════════════════════ -->
+<section class="flat">
+  <div class="kicker" data-i="aiK">AI, on your terms</div>
+  <h2 data-i="aiT">An assistant that lives in your notes — not in the cloud.</h2>
+  <p class="lede" data-i="aiP">Search everything you've ever written, summarize, and turn scattered captures into real
+     notes. Run a small model on-device, or plug in your own API key — <span class="em">the choice, and
+     your data, stay with you.</span></p>
+  <div class="ai-flag"><span class="dot"></span> <span data-i="aiF">Early — rolling out slice by slice. <a href="#roadmap">See the roadmap</a></span></div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     Roadmap — timeline
+     ════════════════════════════════════════════════════════════════ -->
+<section class="flat" id="roadmap">
+  <div class="kicker" data-i="rmK">Roadmap</div>
+  <h2 data-i="rmT">We build in the open. Here's exactly where we are.</h2>
+  <p class="lede" data-i="rmP">Horizons, not dates — this line mirrors our real, public <span style="font-family:var(--mono)">ROADMAP.md</span>.</p>
+
+  <div class="timeline">
+    <div class="tl-track">
+      <div class="tl-item done"><div class="dot"></div><div class="tl-card">
+        <div class="tag" data-i="tagDone">Shipped</div><div class="t" data-i="r1T">Markdown editor</div><div class="s" data-i="r1S">Your vault, your plain files</div></div></div>
+      <div class="tl-item done"><div class="dot"></div><div class="tl-card">
+        <div class="tag" data-i="tagDone2">Shipped</div><div class="t" data-i="r2T">Instant search</div><div class="s" data-i="r2S">Every word, in milliseconds</div></div></div>
+      <div class="tl-item done"><div class="dot"></div><div class="tl-card">
+        <div class="tag" data-i="tagDone3">Shipped</div><div class="t" data-i="r3T">iCloud sync</div><div class="s" data-i="r3S">Clean merges across devices</div></div></div>
+      <div class="tl-item now"><div class="dot"></div><div class="tl-card">
+        <div class="tag" data-i="tagNow">Building now</div><div class="t" data-i="r4T">Ink notebooks</div><div class="s" data-i="r4S">Apple Pencil — pages, paper, embeds</div></div></div>
+      <div class="tl-item future"><div class="dot"></div><div class="tl-card">
+        <div class="tag" data-i="tagNext">Next</div><div class="t" data-i="r5T">Daily driver</div><div class="s" data-i="r5S">The editor replaces Obsidian on iOS</div></div></div>
+      <div class="tl-item future"><div class="dot"></div><div class="tl-card">
+        <div class="tag" data-i="tagNext2">Next</div><div class="t" data-i="r6T">AI: ask your notes</div><div class="s" data-i="r6S">On-device, or your own key</div></div></div>
+      <div class="tl-item future"><div class="dot"></div><div class="tl-card">
+        <div class="tag" data-i="tagNext3">Next</div><div class="t" data-i="r7T">Board</div><div class="s" data-i="r7S">A spatial canvas linking your notes</div></div></div>
+      <div class="tl-item future"><div class="dot"></div><div class="tl-card">
+        <div class="tag" data-i="tagLater">Later</div><div class="t" data-i="r8T">PDF annotation</div><div class="s" data-i="r8S">Mark up PDFs inside notebooks</div></div></div>
+      <div class="tl-item future"><div class="dot"></div><div class="tl-card">
+        <div class="tag" data-i="tagLater2">Later</div><div class="t" data-i="r9T">Highlights library</div><div class="s" data-i="r9S">PDFs, books &amp; articles in one place</div></div></div>
+      <div class="tl-item future"><div class="dot"></div><div class="tl-card">
+        <div class="tag" data-i="tagLater3">Later</div><div class="t" data-i="r10T">Plugins</div><div class="s" data-i="r10S">Extend Flint — safely</div></div></div>
+      <div class="tl-item future"><div class="dot"></div><div class="tl-card">
+        <div class="tag" data-i="tagLater4">Later</div><div class="t" data-i="r11T">Desktop &amp; sync hub</div><div class="s" data-i="r11S">Mac, Windows — and your own server</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     Built in the open
+     ════════════════════════════════════════════════════════════════ -->
+<section class="flat" id="open-source">
+  <div class="kicker" data-i="osK">Built in the open</div>
+  <h2 data-i="osT">Made for myself first — shared with you.</h2>
+  <p class="lede" data-i="osP">Flint started as the tool its author wanted and couldn't find. It's MIT-licensed, the
+     roadmap is public, and contributions are welcome. If it works for one person who cares, it works
+     for a community.</p>
+  <div class="os-ctas">
+    <a class="btn btn-spark" href="https://github.com/caiopieri/flint" data-i="osB1">Star on GitHub</a>
+    <a class="btn" href="https://github.com/caiopieri/flint/blob/main/docs/ARCHITECTURE.md" data-i="osB2">Read the architecture</a>
+    <a class="btn" href="https://github.com/caiopieri/flint" data-i="osB3">Contribute</a>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     Final CTA
+     ════════════════════════════════════════════════════════════════ -->
+<section class="final" id="waitlist">
+  <h2 data-i="fT">Be there when Flint opens up.</h2>
+  <p data-i="fP">Join the waitlist for early access — and to help shape where it goes.</p>
+  <form class="waitlist" data-waitlist>
+    <input type="email" required placeholder="you@email.com" aria-label="Email" data-i-ph="emailPh">
+    <button class="btn btn-spark" type="submit" data-i="join2">Join the waitlist</button>
+  </form>
+  <div class="micro" data-i="fM">No spam. Just a note when there's something real to try.</div>
+</section>
+
+<footer>
+  <div class="foot-row">
+    <span>Flint · MIT License</span>
+    <span class="spacer"></span>
+    <a href="https://github.com/caiopieri/flint">GitHub</a>
+    <a href="#">X</a>
+    <a href="#">Instagram</a>
+    <a href="#" data-i="ftPriv">Privacy</a>
+  </div>
+  <div class="foot-tag" data-i="ftTag">"The depth of Obsidian. The naturalness of GoodNotes. The intelligence of modern AI."</div>
+</footer>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   i18n — EN captured from the DOM, PT-BR from the dictionary below.
+   ════════════════════════════════════════════════════════════════ */
+const PT = {
+  nav1:"Por que o Flint", nav2:"Funcionalidades", nav3:"Roadmap", nav4:"Código aberto",
+  join:"Entrar na lista", join2:"Entrar na lista", viewGh:"Ver no GitHub",
+  h1a:"Sua mente,<br>sem", h1b:"barreiras.",
+  heroP:"Escreva, desenhe à mão e conecte cada ideia — com IA que vive <span class=\"em\">dentro das suas notas</span>. Local-first, código aberto e verdadeiramente sua.",
+  heroMicro:"Grátis e open source · Sem conta · Seus arquivos nunca saem do seu aparelho.",
+  emailPh:"voce@email.com",
+  aside:"Feito para quem pensa com caneta <em>e</em> com texto — e quer os dois no mesmo lugar.",
+  asidePlat:"iPad e iPhone primeiro<br>macOS em seguida",
+  g0:"Escreva", g1:"Desenhe", g2:"Conecte", g3:"Encontre", g4:"Sincronize", g5:"Pergunte",
+  cue:"Role",
+
+  k0:"Escreva", t0:"Escrever sem nada no caminho.",
+  p0:"Um editor markdown nativo e rápido sobre uma pasta de arquivos simples. Sem blocos, sem banco de dados — <span class=\"em\">só as suas palavras, bem postas</span>.",
+  k1:"Desenhe", t1:"Pense com as mãos.",
+  p1:"Cadernos de verdade para o seu Apple Pencil — páginas, papel, zoom. Rabisque um diagrama e <span class=\"em\">incorpore em qualquer nota</span>.",
+  k2:"Conecte", t2:"Cada ideia encontra o seu lugar.",
+  p2:"Ligue qualquer pensamento a outro com dois colchetes. Suas notas deixam de ser uma pilha e viram <span class=\"em\">um mapa de como você pensa</span>.",
+  k3:"Encontre", t3:"Lembre de tudo que você escreveu.",
+  p3:"Digite poucas letras e cada menção — da semana passada ou de anos atrás — <span class=\"em\">já está na tela</span>. Até offline.",
+  k4:"Sincronize", t4:"Em todo lugar — e ainda seu.",
+  p4:"As notas sincronizam pela sua própria pasta do iCloud e <span class=\"em\">se fundem com limpeza entre aparelhos</span>. Cada nota continua um arquivo simples que abre em qualquer lugar.",
+  k5:"Pergunte", t5:"Suas notas, respondendo.",
+  p5:"Faça perguntas, peça resumos, ligue os pontos — com IA que funciona <span class=\"em\">no seu aparelho</span>, nos seus termos.",
+
+  c0aL:"Preview ao vivo", c0aB:"Enquanto digita", c0aS:"Títulos, negrito e listas ganham forma na hora — sem modo de visualização.",
+  c0bC:"velocidade nativa, sem travar",
+  c0cL:"Arquivos simples", c0cB:"Seus para sempre", c0cS:"Cada nota é um arquivo simples na sua pasta — abre em qualquer app, hoje ou daqui a 30 anos.",
+  c1aL:"Apple Pencil", c1aB:"Parece papel", c1aS:"Pressão, inclinação, zoom — páginas que respondem como um caderno de verdade.",
+  c1bC:"em construção — no roadmap",
+  c1cL:"Cadernos de verdade", c1cB:"Páginas e papel", c1cS:"Pautado, quadriculado, pontilhado ou liso — com miniaturas para folhear.",
+  c2aL:"Um gesto", c2aS:"Dois colchetes ligam qualquer pensamento a outro. Esse é o truque inteiro.",
+  c2bC:"backlinks, automáticos",
+  c2cL:"Nada se perde", c2cB:"Ideias voltam", c2cS:"Cada nota mostra o que aponta para ela — pensamentos antigos ressurgem sozinhos.",
+  c3aL:"Tudo", c3aB:"Cada palavra", c3aS:"Anos de notas, buscados na velocidade em que você digita.",
+  c3bC:"funciona offline, sempre",
+  c3cL:"Sem arrumação", c3cB:"Só digite", c3cS:"Sem pastas para lembrar, sem tags para manter. A busca encontra.",
+  c4aL:"Seu iCloud", c4aB:"Sua pasta", c4aS:"O Flint sincroniza por uma pasta que é sua — não por uma conta nos nossos servidores.",
+  c4bC:"edições se fundem com limpeza",
+  c4cL:"Sem prisão", c4cB:"Saia quando quiser", c4cS:"Apague o Flint e suas notas continuam lá — uma pasta de arquivos, intacta.",
+  c5aL:"Sua memória, respondendo", c5aB:"Pergunte qualquer coisa", c5aS:"\"O que eu decidi?\" \"Resume essa semana bagunçada.\" Ele sabe, porque você escreveu.",
+  c5bC:"em breve — veja o roadmap",
+  c5cL:"Privacidade", c5cB:"Fica com você", c5cS:"No aparelho por padrão, ou com a sua própria chave. Nunca nos nossos servidores.",
+
+  scrWrite:"<h4><span class=\"mk\"># </span>Leitura — O Artífice</h4><p>O ponto de Sennett: habilidade é <span class=\"b\">**repetição com variação**</span>, não talento. Dez mil horas é a versão folclórica; a versão do ofício é <span class=\"b\">**se importar com a próxima repetição**</span>.</p><p class=\"q\">\"O artesanato nomeia um impulso humano básico e duradouro: o desejo de fazer bem um trabalho pelo trabalho em si.\"</p><p><span class=\"mk\">- </span>conecta com minha prática no forno<br><span class=\"mk\">- </span>a oficina como escola<br><span class=\"mk\">- </span>escrever a revisão semanal a partir disto<span class=\"caret-line\"></span></p>",
+  scrConnH:"<span class=\"mk\"># </span>Notas de campo — forno",
+  scrConnP:"A segunda queima rachou no cone 6. Cruzando com <span class=\"wl\"><span class=\"mk\">[[</span>Testes de esmalte<span class=\"mk\">]]</span></span> — o lote de óxido de ferro se comporta diferente no <span class=\"wl\"><span class=\"mk\">[[</span>Grês<span class=\"mk\">]]</span></span>.",
+  scrTags:"<span class=\"tg\">#cerâmica</span><span class=\"tg\">#ateliê</span>",
+  scrBl1:"↩ <span>Testes de esmalte</span> — \"…rachou no cone 6, ver notas de campo…\"",
+  scrBl2:"↩ <span>Diário do ateliê</span> — \"…sessão de forno com o lote novo…\"",
+  scrBl3:"↩ <span>Revisão semanal</span> — \"…a linha do forno continua…\"",
+  scrQ:"óxido de ferro",
+  scrR1:"<div class=\"r-file\"><span>forno/notas-de-campo.md</span><span>hoje</span></div><div class=\"r-text\">…o lote de <mark>óxido de ferro</mark> se comporta diferente no grês…</div>",
+  scrR2:"<div class=\"r-file\"><span>testes-de-esmalte.md</span><span>2d</span></div><div class=\"r-text\">…reduzir <mark>óxido de ferro</mark> para 4% e requeimar no cone 5…</div>",
+  scrR3:"<div class=\"r-file\"><span>leitura/manual-de-ceramica.md</span><span>3sem</span></div><div class=\"r-text\">…<mark>óxido de ferro</mark> puxa para o âmbar em redução…</div>",
+  scrR4:"<div class=\"r-file\"><span>diario-do-atelie.md</span><span>1mês</span></div><div class=\"r-text\">…encomendei 2kg de <mark>óxido de ferro</mark> vermelho para o lote de outono…</div>",
+  scrF1:"forno", scrF2:"notas-de-campo.md", scrF3:"revisao-semanal.md",
+  scrBl:"Menções ligadas · 3", scrCount:"142 notas · instantâneo",
+  scrNotes:"notas", scrPages:"páginas", scrEdited:"editado no iPad · 2 min",
+  scrMerged:"editado em dois aparelhos — fundido", scrSync:"iCloud Drive · sincronizado agora",
+  scrAiBadge:"no seu aparelho · modo avião",
+  scrAiQ1:"O que eu concluí sobre as rachaduras no cone 6?",
+  scrAiA1:"Entre <span class=\"wl\">[[Diário do forno]]</span> e <span class=\"wl\">[[Testes de esmalte]]</span>, você rastreou as rachaduras até o lote de óxido de ferro — seu plano: reduzir para 4% e queimar de novo.",
+  scrAiQ2:"Rascunha uma nota ligando os três experimentos.",
+  scrAiA2:"Rascunhei <span class=\"wl\">[[Cone 6 — síntese]]</span> com links e questões em aberto. Nada saiu deste aparelho.",
+
+  whyK:"Por que o Flint", whyT:"Três apps. Nenhum completo.",
+  whyP:"Você escreve à mão no GoodNotes, mas ele não liga um pensamento a nada. Você conecta ideias no Obsidian, mas a escrita à mão dele é um detalhe. Você deixa a IA ajudar no Notion, mas suas notas moram nos servidores de outra pessoa. <span class=\"em\">O Flint é o único lugar que faz os três — e continua seu.</span>",
+  thAI:"IA nativa", thOS:"Código aberto", tdLim:"limitado", tdPart:"parcial",
+
+  difK:"A diferença", difT:"A escrita à mão, finalmente em casa no seu conhecimento.",
+  difP:"Cadernos de verdade para o Apple Pencil — páginas, papel, zoom — lado a lado com suas notas em markdown, seus links e seu canvas. Nada preso em um silo.",
+  st1T:"Rabisque um diagrama", st1P:"Numa página que parece papel, com a caneta que você já ama.",
+  st2T:"Solte numa nota", st2P:"Incorpore o desenho no seu texto — ele continua vivo, não vira um print morto.",
+  st3T:"Conecte a qualquer coisa", st3P:"Ligue uma página manuscrita a uma ideia do ano passado. É tudo uma mente só.",
+
+  prK:"Princípios que são seus", prT:"Suas notas. Seus arquivos. Suas regras.",
+  p1T:"Local-first", p1P:"Funciona totalmente offline. Sem conta, sem nuvem obrigatória, nada liga para casa por padrão.",
+  p2T:"Texto simples, para sempre", p2P:"Cada nota é um arquivo markdown simples. Abra em qualquer lugar, saia quando quiser — não existe prisão para escapar.",
+  p3T:"Código aberto", p3P:"Licença MIT, construído em aberto. Leia o código, molde-o, faça um fork.",
+  p4T:"Privado por design", p4P:"Sua escrita fica no seu aparelho. Sincronização e backup são opt-in, sob o seu controle.",
+
+  aiK:"IA, nos seus termos", aiT:"Um assistente que vive nas suas notas — não na nuvem.",
+  aiP:"Busque tudo que você já escreveu, resuma, transforme capturas soltas em notas de verdade. Rode um modelo pequeno no aparelho, ou use a sua própria chave de API — <span class=\"em\">a escolha, e os seus dados, ficam com você.</span>",
+  aiF:"Cedo — saindo fatia por fatia. <a href=\"#roadmap\">Veja o roadmap</a>",
+
+  rmK:"Roadmap", rmT:"Construímos em aberto. É exatamente aqui que estamos.",
+  rmP:"Horizontes, não datas — esta linha espelha o nosso <span style=\"font-family:var(--mono)\">ROADMAP.md</span> real e público.",
+  tagDone:"Entregue", tagDone2:"Entregue", tagDone3:"Entregue",
+  tagNow:"Construindo agora", tagNext:"Em seguida", tagNext2:"Em seguida", tagNext3:"Em seguida",
+  tagLater:"Depois", tagLater2:"Depois", tagLater3:"Depois", tagLater4:"Depois",
+  r1T:"Editor markdown", r1S:"Seu vault, seus arquivos simples",
+  r2T:"Busca instantânea", r2S:"Cada palavra, em milissegundos",
+  r3T:"Sincronização iCloud", r3S:"Fusões limpas entre aparelhos",
+  r4T:"Cadernos de tinta", r4S:"Apple Pencil — páginas, papel, embeds",
+  r5T:"Uso diário", r5S:"O editor substitui o Obsidian no iOS",
+  r6T:"IA: pergunte às notas", r6S:"No aparelho, ou com a sua chave",
+  r7T:"Board", r7S:"Um canvas espacial ligando suas notas",
+  r8T:"Anotação em PDF", r8S:"Marque PDFs dentro dos cadernos",
+  r9T:"Biblioteca de destaques", r9S:"PDFs, livros e artigos num só lugar",
+  r10T:"Plugins", r10S:"Estenda o Flint — com segurança",
+  r11T:"Desktop e hub de sync", r11S:"Mac, Windows — e o seu próprio servidor",
+
+  osK:"Construído em aberto", osT:"Feito primeiro para mim — compartilhado com você.",
+  osP:"O Flint nasceu como a ferramenta que o autor queria e não encontrava. É licenciado MIT, o roadmap é público e contribuições são bem-vindas. Se funciona para uma pessoa que se importa, funciona para uma comunidade.",
+  osB1:"Dar estrela no GitHub", osB2:"Ler a arquitetura", osB3:"Contribuir",
+
+  fT:"Esteja lá quando o Flint abrir.", fP:"Entre na lista de espera para acesso antecipado — e para ajudar a moldar o rumo.",
+  fM:"Sem spam. Só um aviso quando houver algo real para testar.",
+  ftPriv:"Privacidade",
+  ftTag:"\"A profundidade do Obsidian. A naturalidade do GoodNotes. A inteligência da IA moderna.\""
+};
+const PT_META = {title:"Flint — Sua mente, sem barreiras", listed:"Você está na lista ✓", sending:"Enviando…", err:"Falhou — tente de novo"};
+const EN_META = {title:"Flint — Your mind, without barriers", listed:"You’re on the list ✓", sending:"Sending…", err:"Failed — try again"};
+
+const EN = {}, EN_PH = {};
+document.querySelectorAll('[data-i]').forEach(el => EN[el.dataset.i] = el.innerHTML);
+document.querySelectorAll('[data-i-ph]').forEach(el => EN_PH[el.dataset.iPh] = el.placeholder);
+
+let LANG = localStorage.getItem('flint-lang') || 'en';
+const langBtn = document.getElementById('langBtn');
+
+function setLang(l){
+  LANG = l;
+  localStorage.setItem('flint-lang', l);
+  document.documentElement.lang = l === 'pt' ? 'pt-BR' : 'en';
+  document.title = (l === 'pt' ? PT_META : EN_META).title;
+  document.querySelectorAll('[data-i]').forEach(el => {
+    const k = el.dataset.i;
+    el.innerHTML = (l === 'pt' && PT[k] !== undefined) ? PT[k] : EN[k];
+  });
+  document.querySelectorAll('[data-i-ph]').forEach(el => {
+    const k = el.dataset.iPh;
+    el.placeholder = (l === 'pt' && PT[k] !== undefined) ? PT[k] : EN_PH[k];
+  });
+  langBtn.textContent = l === 'pt' ? 'EN' : 'PT-BR';
+}
+langBtn.addEventListener('click', () => setLang(LANG === 'pt' ? 'en' : 'pt'));
+if (LANG === 'pt') setLang('pt');
+
+/* ════════════════════════════════════════════════════════════════
+   Scroll narrative engine — timeline u ∈ [-1, 6]
+   ════════════════════════════════════════════════════════════════ */
+(() => {
+  const SCENES = 6;
+  const HERO_VH = 130;
+  const SCENE_VH = 150;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const mobile = () => matchMedia('(max-width:900px)').matches;
+
+  const scroller = document.getElementById('scroller');
+  scroller.style.height = (HERO_VH + SCENES * SCENE_VH + 100) + 'vh';
+
+  const phoneWrap = document.getElementById('phoneWrap');
+  const heroCopy  = document.getElementById('heroCopy');
+  const heroSub   = document.getElementById('heroSub');
+  const heroAside = document.getElementById('heroAside');
+  const screenEls = [...document.getElementById('screens').children];
+  const copies  = [...document.querySelectorAll('[data-copy]')];
+  const cards   = [...document.querySelectorAll('[data-scene]')];
+  const ghosts  = [...document.querySelectorAll('[data-ghost]')];
+  const ticks   = [...document.querySelectorAll('#rail .tick')];
+  const rail    = document.getElementById('rail');
+  const cue     = document.getElementById('cue');
+
+  const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+  const smooth = t => { t = clamp(t,0,1); return t*t*(3-2*t); };
+  const window01 = (t,a,b,c,d) => smooth((t-a)/(b-a)) * (1 - smooth((t-c)/(d-c)));
+
+  let target = -1, current = -1, last = -2;
+
+  function measure(){
+    const vh = innerHeight;
+    const p = -scroller.getBoundingClientRect().top;
+    const heroPx  = vh * HERO_VH / 100;
+    const scenePx = vh * SCENE_VH / 100;
+    target = p < heroPx
+      ? clamp(p / heroPx, 0, 1) - 1
+      : clamp((p - heroPx) / scenePx, 0, SCENES);
+  }
+
+  function render(u){
+    const vh = innerHeight;
+    const t = clamp(u, 0, SCENES);
+
+    // phone: peek → rise → straighten
+    const e = smooth(u + 1);
+    const m = mobile();
+    const phoneH = phoneWrap.firstElementChild.offsetHeight || 696;
+    const rest = m ? 0.58 : 0.47;  // rests higher on mobile: room for the copy scrim
+    const peekY = (vh/2) + (phoneH * rest) - (reduced ? vh*0.35 : (m ? 106 : 148));
+    const offY = (1 - e) * peekY;
+    const rot  = (1 - e) * -10;
+    phoneWrap.style.transform =
+      `translate(-50%, calc(-${rest*100}% + ${offY}px)) rotate(${rot}deg)`;
+
+    // hero copy — on mobile it fades earlier, before the phone reaches it
+    const heroOut = m ? smooth((u + 0.8) / 0.45) : smooth((u + 0.55) / 0.5);
+    const heroOp = 1 - heroOut;
+    heroCopy.style.opacity = heroSub.style.opacity = heroAside.style.opacity = heroOp;
+    heroCopy.style.transform  = `translateY(${heroOut * -70}px)`;
+    heroSub.style.transform   = `translateY(${heroOut * -46}px)`;
+    heroAside.style.transform = `translateY(${heroOut * -46}px)`;
+    const heroHidden = heroOp < 0.02;
+    [heroCopy, heroSub, heroAside].forEach(el => {
+      el.style.visibility = heroHidden ? 'hidden' : 'visible';
+      el.style.pointerEvents = heroHidden ? 'none' : 'auto';
+    });
+
+    // screens
+    const idx = clamp(Math.floor(t), 0, SCENES-1);
+    const local = clamp(t - idx, 0, 1);
+    const slide = idx + smooth((local - 0.75) / 0.25);
+    screenEls.forEach((el, i) => {
+      el.style.transform = `translateY(${(i - slide) * 102}%)`;
+    });
+
+    // copy blocks
+    copies.forEach((el, i) => {
+      const lt = t - i;
+      const isLast = i === SCENES-1;
+      const outA = isLast ? 2 : 0.78, outB = isLast ? 3 : 1.0;
+      const o = u < -0.05 ? 0 : window01(lt, 0.0, 0.18, outA, outB);
+      const y = (1 - smooth(lt / 0.18)) * 46 - smooth((lt - outA)/(outB - outA)) * 60;
+      el.style.opacity = o;
+      el.style.visibility = o < 0.02 ? 'hidden' : 'visible';
+      el.style.transform = mobile()
+        ? `translate(-50%, ${y}px)` : `translateY(calc(-50% + ${y}px))`;
+    });
+
+    // floating cards
+    cards.forEach(el => {
+      const s = +el.dataset.scene;
+      const depth = +el.dataset.depth || 1;
+      const lt = t - s;
+      const isLast = s === SCENES-1;
+      const outA = isLast ? 2 : 0.72, outB = isLast ? 3 : 0.98;
+      const o = u < 0 ? 0 : window01(lt, 0.02, 0.22, outA, outB);
+      const drift = reduced ? 0 : (0.5 - clamp(lt,0,1)) * 240 * depth;
+      el.style.opacity = o * 0.98;
+      el.style.left = '50%'; el.style.top = '50%';
+      el.style.transform =
+        `translate(calc(${el.dataset.x}vw - 50%), calc(${el.dataset.y}vh - 50% + ${-drift}px))`;
+    });
+
+    // ghosts
+    ghosts.forEach(el => {
+      const s = +el.dataset.ghost;
+      const lt = t - s;
+      const o = (u < 0 ? 0 : window01(lt, 0.05, 0.3, 0.7, 0.95)) * 0.55;
+      const y = (0.5 - clamp(lt,0,1)) * 120;
+      el.style.opacity = o;
+      el.style.transform = `translate(-50%, calc(-50% + ${reduced ? 0 : -y}px))`;
+    });
+
+    // rail + cue
+    ticks.forEach((el,i) => el.classList.toggle('on', i === idx));
+    rail.style.opacity = u > 0 ? 1 : 0;
+    if (cue) cue.style.opacity = clamp(-u * 1.4 - 0.2, 0, 1);
+  }
+
+  // permanent rAF loop — next frame scheduled BEFORE rendering
+  function loop(){
+    requestAnimationFrame(loop);
+    current += (target - current) * (reduced ? 1 : 0.16);
+    if (Math.abs(target - current) < 0.0004) current = target;
+    if (current === last) return;
+    last = current;
+    try { render(current); } catch (e) { console.error('flint-landing render:', e); }
+  }
+
+  addEventListener('scroll', measure, {passive:true});
+  addEventListener('resize', measure);
+  measure(); current = target;
+  loop();
+
+  // nav: transparent at the top, blurred once you scroll
+  const navEl = document.querySelector('nav');
+  const navBg = () => navEl.classList.toggle('scrolled', scrollY > 40);
+  addEventListener('scroll', navBg, {passive:true});
+  navBg();
+
+  // "#features" lands mid-dwell of scene 0 (inside the sticky stage,
+  // a plain anchor can't know the right scroll offset)
+  document.querySelectorAll('a[href="#features"]').forEach(a => {
+    a.addEventListener('click', ev => {
+      ev.preventDefault();
+      const vh = innerHeight;
+      scrollTo({
+        top: scroller.offsetTop + vh * HERO_VH/100 + vh * SCENE_VH/100 * 0.45,
+        behavior: reduced ? 'instant' : 'smooth'
+      });
+    });
+  });
+
+  // waitlist — set WAITLIST_ENDPOINT to a Formspree-style form URL
+  // (e.g. 'https://formspree.io/f/XXXXXXXX'). Empty = local ack only.
+  const WAITLIST_ENDPOINT = 'https://formspree.io/f/mvzjejbz';
+  document.querySelectorAll('[data-waitlist]').forEach(f => {
+    f.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const btn = f.querySelector('button');
+      const email = f.querySelector('input').value;
+      const M = LANG === 'pt' ? PT_META : EN_META;
+      if (!WAITLIST_ENDPOINT){
+        btn.textContent = M.listed; btn.disabled = true;
+        return;
+      }
+      btn.disabled = true; btn.textContent = M.sending;
+      try {
+        const r = await fetch(WAITLIST_ENDPOINT, {
+          method:'POST',
+          headers:{'Accept':'application/json','Content-Type':'application/json'},
+          body: JSON.stringify({email, lang: LANG, source:'flint-landing'})
+        });
+        if (!r.ok) throw new Error(r.status);
+        btn.textContent = M.listed;
+      } catch (e) {
+        btn.disabled = false; btn.textContent = M.err;
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
