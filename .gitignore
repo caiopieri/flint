@@ -56,3 +56,6 @@ ios/Flint/Resources/web/*
 ios/Flint/App/Tokens.swift
 web/src/tokens.css
 .vercel
+
+# Local agent skill installations (locked metadata is tracked in skills-lock.json)
+.agents/
