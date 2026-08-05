@@ -11,6 +11,7 @@
 | 2026-07-25 | FAXINA PR-B | working tree | `grep` por `openDebugVaultIfRequested` / `loadRecentsIfNeeded` / `restoreSavedVaultIfNeeded` em `ios/` → vazio; `ContentView`/`VaultStore` sem diff | ✅ passou | scope-creep do debug-vault revertido; `.flintIcon` mantido como previsto |
 | 2026-07-25 | FAXINA PR-C | `ea1e5cf` | `InkPageOverview.swift` existe com a interface fixada; compila | ⏸️ parcial | build verde; **aceite manual (reordenar persiste após reabrir) NÃO executado** |
 | 2026-07-25 | consolidação do working tree | `d907449`..`4822aec` | 434 linhas soltas fatiadas em 6 commits por assunto; gate rodado no HEAD final | ✅ passou | `make build` → `** BUILD SUCCEEDED **`; `xcodebuild test` → **58 testes, 0 falhas** (iPhone 17 Pro, iOS 26.4) |
+| 2026-08-04 | consolidação `t4-search` | `0ea883d` | higiene de refs, working tree e documentação reconciliados; build scripts de tokens/web validados no Xcode | ✅ passou | `make build` → `** BUILD SUCCEEDED **`; `xcodebuild test` → **58 testes, 0 falhas** (iPhone 17 Pro, runtime iOS 26.4 / 26.4.1) |
 
 ## Legenda
 - ✅ **passou** — DoD satisfeito, sonda independente confirmou.
