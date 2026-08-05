@@ -49,6 +49,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
+        # Both pre-build phases regenerate source-tree artifacts (tokens and web bundle).
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
     preBuildScripts:
       - name: Generate design tokens
         basedOnDependencyAnalysis: false
