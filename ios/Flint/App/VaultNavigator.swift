@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The app frame once a vault is open. Picks the right shell per width:
 /// iPad/regular → the tree floats *over* the note (overlay with a light scrim);
@@ -7,15 +8,16 @@ import SwiftUI
 /// the phone doesn't, so it pushes. Spec: docs/design/COMPONENTS.md → "Navigation shell · T1".
 struct VaultNavigator: View {
     let vault: VaultStore
+    let modelStore: ModelStore
     var chooseVault: () -> Void
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         Group {
             if sizeClass == .compact {
-                CompactNavigator(vault: vault, chooseVault: chooseVault)
+                CompactNavigator(vault: vault, modelStore: modelStore, chooseVault: chooseVault)
             } else {
-                RegularNavigator(vault: vault, chooseVault: chooseVault)
+                RegularNavigator(vault: vault, modelStore: modelStore, chooseVault: chooseVault)
             }
         }
         .sheet(isPresented: Binding(
@@ -35,8 +37,10 @@ struct VaultNavigator: View {
 
 private struct RegularNavigator: View {
     let vault: VaultStore
+    let modelStore: ModelStore
     var chooseVault: () -> Void
     @State private var showSidebar = true
+    @State private var dismissEditingToken = 0
     private let sidebarWidth: CGFloat = 320
 
     // A hand-rolled overlay instead of NavigationSplitView: the iPadOS floating
@@ -49,7 +53,12 @@ private struct RegularNavigator: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             NavigationStack {
-                NoteDetail(vault: vault)
+                NoteDetail(
+                    vault: vault,
+                    modelStore: modelStore,
+                    isSidebarPresented: showSidebar,
+                    dismissEditingToken: dismissEditingToken
+                )
             }
 
             // Light scrim over the note while open; tap to dismiss. Inert when closed.
@@ -64,6 +73,11 @@ private struct RegularNavigator: View {
                 .frame(width: sidebarWidth)
                 .frame(maxHeight: .infinity)
                 .background(FlintColor.surface)
+                // Stage Manager's window controls occupy the upper-left titlebar
+                // region. Keep the custom drawer below that chrome; otherwise
+                // the drawer toggle and the red/yellow/green controls share the
+                // same hit target.
+                .safeAreaPadding(.top, 40)
                 // Structure via a hairline border, never a shadow (design system §4).
                 .overlay(alignment: .trailing) { FlintColor.border.frame(width: 1) }
                 .offset(x: showSidebar ? 0 : -sidebarWidth)
@@ -82,6 +96,7 @@ private struct RegularNavigator: View {
                 }
                 .buttonStyle(.flintPressable)
                 .padding(.leading, FlintSpace.s2)
+                .padding(.top, 40)
                 .transition(.opacity)
             }
         }
@@ -92,6 +107,8 @@ private struct RegularNavigator: View {
     // Implicit `.animation(value:)` on the container drives both directions
     // reliably, so this just flips state — no withAnimation needed.
     private func setSidebar(_ open: Bool) {
+        guard showSidebar != open else { return }
+        dismissEditingToken += 1
         showSidebar = open
     }
 }
@@ -100,8 +117,10 @@ private struct RegularNavigator: View {
 
 private struct CompactNavigator: View {
     let vault: VaultStore
+    let modelStore: ModelStore
     var chooseVault: () -> Void
     @State private var isOpen = false
+    @State private var dismissEditingToken = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -115,7 +134,12 @@ private struct CompactNavigator: View {
 
                 ZStack {
                     NavigationStack {
-                        NoteDetail(vault: vault)
+                        NoteDetail(
+                            vault: vault,
+                            modelStore: modelStore,
+                            isSidebarPresented: isOpen,
+                            dismissEditingToken: dismissEditingToken
+                        )
                             .toolbar {
                                 ToolbarItem(placement: .topBarLeading) {
                                     Button("Files", systemImage: "sidebar.leading") { setOpen(!isOpen) }
@@ -161,6 +185,8 @@ private struct CompactNavigator: View {
     }
 
     private func setOpen(_ open: Bool) {
+        guard isOpen != open else { return }
+        dismissEditingToken += 1
         withAnimation(.easeOut(duration: FlintMotion.base)) { isOpen = open }
     }
 }
@@ -173,6 +199,7 @@ private struct SidebarContent: View {
     var chooseVault: () -> Void
     /// Lets the compact drawer close itself when a note is opened/created.
     var onSelectNote: (() -> Void)? = nil
+    @State private var isSettingsPresented = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -339,6 +366,14 @@ private struct SidebarContent: View {
             .foregroundStyle(FlintColor.textSecondary)
             .buttonStyle(.flintPressable)
 
+            Button("New Board", systemImage: "square.grid.2x2") {
+                onSelectNote?()
+                Task { await vault.createBoard() }
+            }
+            .labelStyle(.iconOnly)
+            .foregroundStyle(FlintColor.textSecondary)
+            .buttonStyle(.flintPressable)
+
             Button("New note", systemImage: "square.and.pencil") {
                 onSelectNote?()
                 Task { await vault.createNote() }
@@ -346,9 +381,19 @@ private struct SidebarContent: View {
             .labelStyle(.iconOnly)
             .foregroundStyle(FlintColor.textSecondary)
             .buttonStyle(.flintPressable)
+
+            Button("Settings", systemImage: "gearshape") {
+                isSettingsPresented = true
+            }
+            .labelStyle(.iconOnly)
+            .foregroundStyle(FlintColor.textSecondary)
+            .buttonStyle(.flintPressable)
         }
         .padding(.horizontal, FlintSpace.s4)
         .padding(.vertical, FlintSpace.s3)
+        .sheet(isPresented: $isSettingsPresented) {
+            FlintSettingsView()
+        }
     }
 
     private var emptyState: some View {
@@ -363,8 +408,140 @@ private struct SidebarContent: View {
             }
             .buttonStyle(.flintPrimary)
             .frame(maxWidth: 240)
+            Button("New Board") {
+                onSelectNote?()
+                Task { await vault.createBoard() }
+            }
+            .buttonStyle(.bordered)
+            .frame(maxWidth: 240)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Settings
+
+private enum FlintSettingsSection: String, CaseIterable, Identifiable {
+    case about = "Sobre"
+    case appearance = "Aparência"
+    case interface = "Interface"
+    case editor = "Editor"
+    case files = "Arquivos & Links"
+    case shortcuts = "Atalhos"
+    case keychain = "Chaveiro"
+    case nativePlugins = "Plugins nativos"
+    case communityPlugins = "Plugins não oficiais"
+    case models = "Modelos"
+    case quickOpen = "Navegação rápida"
+
+    var id: String { rawValue }
+    var icon: String {
+        switch self {
+        case .about: "person.circle"
+        case .appearance: "paintpalette"
+        case .interface: "rectangle"
+        case .editor: "pencil"
+        case .files: "folder"
+        case .shortcuts: "command"
+        case .keychain: "key"
+        case .nativePlugins: "shippingbox"
+        case .communityPlugins: "puzzlepiece"
+        case .models: "cube"
+        case .quickOpen: "doc.text.magnifyingglass"
+        }
+    }
+}
+
+private struct FlintSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var section: FlintSettingsSection? = .about
+    @AppStorage("flint.appearance") private var appearance = "system"
+    @AppStorage(FlintHaptics.enabledKey) private var hapticsEnabled = true
+
+    var body: some View {
+        NavigationSplitView {
+            List(FlintSettingsSection.allCases, selection: $section) { item in
+                Label(item.rawValue, systemImage: item.icon)
+                    .tag(item)
+            }
+            .navigationTitle("Configurações")
+            .navigationSplitViewColumnWidth(min: 220, ideal: 280)
+        } detail: {
+            settingsDetail(section ?? .about)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Fechar") { dismiss() }
+                    }
+                }
+        }
+        .tint(FlintColor.accentText)
+        .background(FlintColor.bg)
+    }
+
+    @ViewBuilder
+    private func settingsDetail(_ item: FlintSettingsSection) -> some View {
+        Form {
+            Section {
+                Text(item.rawValue)
+                    .font(.largeTitle.weight(.bold))
+                    .foregroundStyle(FlintColor.textPrimary)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 22, leading: 20, bottom: 10, trailing: 20))
+            }
+
+            switch item {
+            case .about:
+                Section {
+                    LabeledContent("Versão", value: "0.1.0 (1)")
+                    LabeledContent("Idioma", value: "Português do Brasil")
+                }
+                Section("Conta") {
+                    Text("O Flint é local-first. Conta e sync hospedado não fazem parte do núcleo atual.")
+                        .foregroundStyle(FlintColor.textSecondary)
+                }
+            case .appearance:
+                Section("Tema") {
+                    Picker("Aparência", selection: $appearance) {
+                        Text("Sistema").tag("system")
+                        Text("Claro").tag("light")
+                        Text("Escuro").tag("dark")
+                    }
+                    .pickerStyle(.menu)
+                }
+            case .interface:
+                Section("Interação") {
+                    Toggle("Retorno tátil", isOn: $hapticsEnabled)
+                    Text("O Flint usa haptics sem transformar cada toque em ruído.")
+                        .font(.footnote)
+                        .foregroundStyle(FlintColor.textSecondary)
+                }
+            case .editor:
+                settingsMessage("Editor nativo", "O editor usa New York para leitura, CodeMirror para edição e live preview para manter Markdown legível.")
+            case .files:
+                settingsMessage("Arquivos & Links", "O vault continua sendo escolhido pelo usuário. Notas, anexos e notebooks permanecem como arquivos abertos.")
+            case .shortcuts:
+                settingsMessage("Atalhos", "Ações de edição ficam disponíveis na barra flutuante acima do teclado e nos comandos nativos do sistema.")
+            case .keychain:
+                settingsMessage("Chaveiro", "Nenhuma credencial remota é necessária para o núcleo local-first atual.")
+            case .nativePlugins:
+                settingsMessage("Plugins nativos", "Superfícies nativas do Flint aparecem aqui conforme ganham contratos estáveis.")
+            case .communityPlugins:
+                settingsMessage("Plugins não oficiais", "A API pública de plugins ainda não foi liberada. Rede continua negada por padrão.")
+            case .models:
+                settingsMessage("Modelos", "Modelos GGUF são escolhidos e baixados pelo chat nativo, fora do vault.")
+            case .quickOpen:
+                settingsMessage("Navegação rápida", "Busca, outline local e links de nota formam a primeira camada de navegação contextual.")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(FlintColor.bg)
+    }
+
+    private func settingsMessage(_ title: String, _ message: String) -> some View {
+        Section(title) {
+            Text(message)
+                .foregroundStyle(FlintColor.textSecondary)
+        }
     }
 }
 
@@ -633,7 +810,11 @@ private struct VaultTreeList: View {
 
     private func iconName(for node: VaultNode) -> String {
         if node.isDirectory { return "folder" }
-        return node.url.pathExtension.lowercased() == "ink" ? "pencil.tip" : "doc.text"
+        switch node.url.pathExtension.lowercased() {
+        case "ink": return "pencil.tip"
+        case "canvas": return "square.grid.2x2"
+        default: return "doc.text"
+        }
     }
 
     @ViewBuilder
@@ -735,15 +916,37 @@ private struct SearchResultRow: View {
 /// note's name, or the empty state when none is selected.
 private struct NoteDetail: View {
     let vault: VaultStore
+    let modelStore: ModelStore
+    var isSidebarPresented = false
+    var dismissEditingToken = 0
+    @State private var isEditingTitle = false
+    @State private var titleText = ""
+    @State private var isAIShown = false
+    @State private var isFocusMode = false
+    @State private var isReadingMode = false
+    @State private var isBookmarked = false
+    @FocusState private var titleFocused: Bool
 
     var body: some View {
         Group {
             if let selection = vault.selection {
                 if selection.url.pathExtension.lowercased() == "ink",
                    let path = vault.selectedRelativePath {
-                    InkScreen(vault: vault, relativePath: path)
+                    InkScreen(
+                        vault: vault,
+                        relativePath: path,
+                        isSidebarPresented: isSidebarPresented
+                    )
+                } else if selection.url.pathExtension.lowercased() == "canvas",
+                          let path = vault.selectedRelativePath {
+                    BoardScreen(vault: vault, relativePath: path)
                 } else {
-                    EditorWebView(vault: vault, path: vault.selectedRelativePath)
+                    EditorWebView(
+                        vault: vault,
+                        path: vault.selectedRelativePath,
+                        dismissEditingToken: dismissEditingToken,
+                        isReadOnly: isReadingMode
+                    )
                         .background(FlintColor.bg)
                         .navigationTitle(selection.name)
                         .navigationBarTitleDisplayMode(.inline)
@@ -755,5 +958,153 @@ private struct NoteDetail: View {
                 }
             }
         }
+        .toolbar {
+            if let selection = vault.selection,
+               selection.url.pathExtension.lowercased() == "md" {
+                ToolbarItem(placement: .principal) {
+                    titleControl(for: selection)
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button("Flint AI", systemImage: "sparkles") { isAIShown = true }
+                        .labelStyle(.iconOnly)
+                        .accessibilityLabel("Open Flint AI")
+
+                    noteActionsMenu(selection)
+                }
+            }
+        }
+        .toolbar(isFocusMode ? .hidden : .visible, for: .navigationBar)
+        .overlay(alignment: .topTrailing) {
+            if isFocusMode {
+                Button {
+                    isFocusMode = false
+                } label: {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(FlintColor.borderSubtle, lineWidth: 1))
+                }
+                .buttonStyle(.flintPressable)
+                .padding(.top, FlintSpace.s3)
+                .padding(.trailing, FlintSpace.s3)
+                .accessibilityLabel("Sair do modo foco")
+            }
+        }
+        .sheet(isPresented: $isAIShown) {
+            AIChatSheet(vault: vault, modelStore: modelStore)
+        }
+        .onChange(of: vault.selection?.id) { _, _ in
+            // A successful autosave reloads the tree and changes the selected
+            // URL. Keep the field open when the new node already has the text
+            // being edited; cancel only when the user selected another note.
+            if isEditingTitle, vault.selection?.name == titleText { return }
+            isEditingTitle = false
+            titleFocused = false
+        }
     }
+
+    @ViewBuilder
+    private func noteActionsMenu(_ selection: VaultNode) -> some View {
+        Menu {
+            Button("Links inversos", systemImage: "link") {}
+                .disabled(true)
+            Button(isReadingMode ? "Modo de edição" : "Visualização de leitura", systemImage: "book") {
+                isReadingMode.toggle()
+            }
+            Button("Modo de origem", systemImage: "chevron.left.forwardslash.chevron.right") {
+                isReadingMode = false
+            }
+            Button(isFocusMode ? "Sair do modo foco" : "Modo foco", systemImage: "arrow.up.left.and.arrow.down.right") {
+                isFocusMode.toggle()
+            }
+
+            Divider()
+
+            Button("Renomear", systemImage: "pencil") { beginTitleEdit(selection) }
+            Button("Mover arquivo para…", systemImage: "folder") {}
+                .disabled(true)
+            Button(isBookmarked ? "Remover marcador" : "Marcador", systemImage: isBookmarked ? "bookmark.fill" : "bookmark") {
+                isBookmarked.toggle()
+            }
+            Button("Adicionar propriedade", systemImage: "plus.circle") {}
+                .disabled(true)
+
+            Divider()
+
+            Button("Encontrar…", systemImage: "magnifyingglass") {}
+                .disabled(true)
+            Button("Copiar caminho", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = vault.selectedRelativePath
+            }
+            Button("Abrir histórico de versão", systemImage: "clock.arrow.circlepath") {}
+                .disabled(true)
+            Button("Compartilhar", systemImage: "square.and.arrow.up") {}
+                .disabled(true)
+
+            Divider()
+
+            Button("Apagar arquivo", systemImage: "trash", role: .destructive) {
+                Task { await vault.delete(selection) }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .frame(width: 32, height: 32)
+        }
+        .accessibilityLabel("Ações da nota")
+    }
+
+    @ViewBuilder
+    private func titleControl(for selection: VaultNode) -> some View {
+        if isEditingTitle {
+            TextField("Note title", text: $titleText)
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.center)
+                .lineLimit(1)
+                .frame(minWidth: 140, maxWidth: 280)
+                .focused($titleFocused)
+                .submitLabel(.done)
+                .onAppear { titleFocused = true }
+                .onSubmit { commitTitle(selection) }
+                .onChange(of: titleFocused) { _, focused in
+                    if !focused { commitTitle(selection) }
+                }
+                .task(id: titleText) {
+                    guard isEditingTitle else { return }
+                    let proposed = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !proposed.isEmpty, proposed != selection.name else { return }
+
+                    // Avoid a filesystem rename for every keystroke. The title
+                    // follows typing after a short pause, like the editor's
+                    // debounced note save.
+                    try? await Task.sleep(for: .milliseconds(400))
+                    guard !Task.isCancelled,
+                          isEditingTitle,
+                          vault.selection?.id == selection.id else { return }
+                    await vault.rename(selection, to: proposed)
+                }
+        } else {
+            Text(selection.name)
+                .font(.headline)
+                .lineLimit(1)
+                .frame(maxWidth: 280)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { beginTitleEdit(selection) }
+                .accessibilityHint("Double-tap to rename")
+        }
+    }
+
+    private func beginTitleEdit(_ selection: VaultNode) {
+        titleText = selection.name
+        isEditingTitle = true
+    }
+
+    private func commitTitle(_ selection: VaultNode) {
+        guard isEditingTitle, vault.selection?.id == selection.id else { return }
+        isEditingTitle = false
+        titleFocused = false
+        let trimmed = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != selection.name else { return }
+        Task { await vault.rename(selection, to: trimmed) }
+    }
+
 }

@@ -1,0 +1,28 @@
+:root { color-scheme: light dark; }
+html, body, #board { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--flint-bg); color: var(--flint-text-primary); font-family: var(--flint-font-sans); -webkit-text-size-adjust: 100%; }
+.board-shell { position: relative; height: 100%; overflow: hidden; background: var(--flint-bg); }
+.board-toolbar { position: absolute; z-index: 5; top: var(--flint-space-3); left: var(--flint-space-3); display: flex; align-items: center; gap: var(--flint-space-2); width: fit-content; max-width: calc(100% - 24px); padding: var(--flint-space-2); border: 1px solid var(--flint-border); border-radius: var(--flint-radius-lg); background: color-mix(in srgb, var(--flint-surface) 82%, transparent); box-shadow: 0 8px 24px rgba(0,0,0,.14); backdrop-filter: blur(18px) saturate(115%); }
+.board-toolbar button, .board-note-row { min-height: 36px; border: 0; border-radius: var(--flint-radius-md); background: transparent; color: var(--flint-text-primary); font: inherit; cursor: pointer; }
+.board-toolbar button { min-width: 36px; padding: 0 var(--flint-space-2); }
+.board-toolbar button:active, .board-note-row:active { background: var(--flint-selection); }
+.board-toolbar .board-status { margin-left: auto; overflow: hidden; color: var(--flint-text-muted); font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
+.board-viewport { position: absolute; inset: 0; overflow: hidden; touch-action: none; background-image: radial-gradient(circle, color-mix(in srgb, var(--flint-text-muted) 24%, transparent) 1px, transparent 1px); background-size: 24px 24px; }
+.board-workspace { position: absolute; width: 40000px; height: 40000px; transform-origin: 0 0; }
+.board-edges { position: absolute; width: 40000px; height: 40000px; overflow: visible; pointer-events: none; }
+.board-card { position: absolute; display: flex; flex-direction: column; gap: 6px; padding: 14px; overflow: hidden; border: 1px solid var(--flint-border); border-radius: var(--flint-radius-md); background: var(--flint-surface); color: var(--flint-text-primary); box-shadow: 0 5px 16px rgba(0,0,0,.12); user-select: none; cursor: grab; }
+.board-card:active { cursor: grabbing; }
+.board-card-title { overflow: hidden; font-family: var(--flint-font-serif); font-size: 1.05rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.board-card-path { overflow: hidden; color: var(--flint-text-muted); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.board-card-unsupported { color: var(--flint-text-secondary); font-size: .85rem; }
+.board-panel { position: absolute; z-index: 6; top: 72px; left: var(--flint-space-3); width: min(320px, calc(100vw - 24px)); max-height: min(60vh, 440px); overflow: auto; padding: var(--flint-space-2); border: 1px solid var(--flint-border); border-radius: var(--flint-radius-lg); background: var(--flint-surface); box-shadow: 0 10px 28px rgba(0,0,0,.18); }
+.board-panel[hidden] { display: none; }
+.board-panel-title { padding: var(--flint-space-2); color: var(--flint-text-secondary); font-size: .85rem; }
+.board-note-row { display: flex; width: 100%; flex-direction: column; align-items: flex-start; padding: var(--flint-space-2) var(--flint-space-3); text-align: left; }
+.board-note-title { overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; }
+.board-note-path { overflow: hidden; max-width: 100%; color: var(--flint-text-muted); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.board-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; color: var(--flint-text-secondary); text-align: center; pointer-events: none; }
+.board-add-bar { position: absolute; z-index: 5; left: 50%; bottom: var(--flint-space-4); display: flex; gap: 4px; padding: 4px; border: 1px solid var(--flint-border); border-radius: var(--flint-radius-xl); background: color-mix(in srgb, var(--flint-surface) 86%, transparent); box-shadow: 0 8px 24px rgba(0,0,0,.14); transform: translateX(-50%); backdrop-filter: blur(18px) saturate(115%); }
+.board-add-bar button { width: 44px; min-height: 40px; border: 0; border-radius: var(--flint-radius-md); background: transparent; color: var(--flint-text-primary); font: 1.15rem var(--flint-font-sans); cursor: pointer; }
+.board-add-bar button:active { background: var(--flint-selection); }
+@media (max-width: 480px) { .board-toolbar { gap: 2px; padding: 4px; } .board-toolbar button { padding: 0 6px; } .board-toolbar .board-status { max-width: 84px; } }

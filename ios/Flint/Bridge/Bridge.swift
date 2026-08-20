@@ -68,6 +68,41 @@ final class WebBridge: NSObject, WKScriptMessageHandlerWithReply {
                 return (nil, "doc.save failed: \(error.localizedDescription)")
             }
 
+        case "attachment.data":
+            guard let path = payload?["path"] as? String else {
+                return (nil, "attachment.data: missing path")
+            }
+            do {
+                let result = try await vault.attachmentData(path)
+                return ([
+                    "data": result.data.base64EncodedString(),
+                    "mimeType": result.mimeType
+                ], nil)
+            } catch {
+                return (nil, "attachment.data failed: \(error.localizedDescription)")
+            }
+
+        case "ai.context":
+            let query = payload?["query"] as? String ?? ""
+            let currentNoteText = payload?["currentNoteText"] as? String
+            let context = await vault.aiContext(query: query, currentNoteText: currentNoteText)
+            return ([
+                "query": context.query,
+                "currentNote": context.currentNote,
+                "sources": context.sources.map {
+                    ["path": $0.path, "title": $0.title, "excerpt": $0.excerpt]
+                }
+            ], nil)
+
+        case "doc.links":
+            return (["targets": vault.linkTargets()], nil)
+
+        case "note.open":
+            guard let target = payload?["target"] as? String else {
+                return (nil, "note.open: missing target")
+            }
+            return (["opened": await vault.openOrCreateNoteTarget(target)], nil)
+
         case "ink.thumbnail":
             guard let target = payload?["target"] as? String else {
                 return (nil, "ink.thumbnail: missing target")
@@ -82,8 +117,38 @@ final class WebBridge: NSObject, WKScriptMessageHandlerWithReply {
             vault.requestInk(target)
             return (["ok": true], nil)
 
+        case "board.load":
+            guard let path = payload?["path"] as? String else { return (nil, "board.load: missing path") }
+            do {
+                let document = try await vault.boardLoad(path)
+                return try boardReply(document)
+            } catch { return (nil, "board.load failed: \(error.localizedDescription)") }
+
+        case "board.save":
+            guard let path = payload?["path"] as? String,
+                  let raw = payload?["document"] as? String,
+                  let data = raw.data(using: .utf8) else {
+                return (nil, "board.save: missing path/document")
+            }
+            do {
+                let document = try BoardDocument.decode(data)
+                try await vault.boardSave(path, document)
+                return (["ok": true], nil)
+            } catch { return (nil, "board.save failed: \(error.localizedDescription)") }
+
+        case "board.notes":
+            return (["notes": vault.boardNotes()], nil)
+
         default:
             return (nil, "Unknown bridge method: \(method)")
         }
+    }
+
+    private func boardReply(_ document: BoardDocument) throws -> (Any?, String?) {
+        let data = try document.encoded()
+        guard let json = String(data: data, encoding: .utf8) else {
+            return (nil, "board.load: encoding failed")
+        }
+        return (["document": json], nil)
     }
 }

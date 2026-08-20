@@ -48,8 +48,15 @@ protocol SyncProvider: Sendable {
     /// Grava bytes crus (coordenado, atômico).
     func writeData(_ data: Data, to url: URL) async throws
 
+    /// Importa um arquivo escolhido pelo usuário para dentro do vault, sem
+    /// permitir sobrescrita de um anexo existente.
+    func importAttachment(from source: URL, into root: URL) async throws -> URL
+
     /// Create a new empty `.md` note with a non-colliding name; returns its URL.
     func createNote(in directory: URL, baseName: String) async throws -> URL
+
+    /// Create a new empty JSON Canvas `.canvas` with a non-colliding name.
+    func createCanvas(in directory: URL, baseName: String) async throws -> URL
 
     /// Cria um `.ink` novo (conteúdo = `InkNotebook().encoded()`), nome não-colidente; retorna a URL.
     func createInk(in directory: URL, baseName: String) async throws -> URL

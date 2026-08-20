@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Phase 1a empty state — no vault chosen yet.
 /// Spec: docs/design/COMPONENTS.md → "Navigation shell · T1" (Empty state) + Buttons.
@@ -12,13 +13,17 @@ struct VaultEmptyState: View {
             FlintColor.bg.ignoresSafeArea()
 
             VStack(spacing: FlintSpace.s5) {
-                // Brand mark stand-in. The faceted flint mark
-                // (assets/brand/flint-icon.svg) is wired into the asset catalog
-                // later (docs/design/ICONOGRAPHY.md → "App icon" is implementation).
-                // SF Symbol keeps the layout and warm/amber tone correct for now.
-                Image(systemName: "sparkles")
-                    .font(.system(size: 44))
-                    .foregroundStyle(FlintColor.accent)
+                if let image = UIImage(named: "AppIcon") {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 96, height: 96)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                } else {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 44))
+                        .foregroundStyle(FlintColor.accent)
+                }
 
                 VStack(spacing: FlintSpace.s2) {
                     Text("Flint")

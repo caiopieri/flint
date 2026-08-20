@@ -4,7 +4,7 @@
 // All colors/fonts come from the design tokens (var(--flint-*) in tokens.css),
 // so the editor and the native chrome render one look across the WKWebView seam
 // (ADR-D03/D04) and follow dark/light automatically.
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap, drawSelection } from "@codemirror/view";
 import {
   cursorLineDown,
@@ -13,6 +13,8 @@ import {
   history,
   historyKeymap,
   indentWithTab,
+  redo,
+  undo,
 } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -20,6 +22,8 @@ import { tags as t } from "@lezer/highlight";
 import { GFM } from "@lezer/markdown";
 import { livePreview, flintMarkdownExtensions } from "./livePreview";
 import { inkEmbed, inkMarkdownExtensions } from "./inkEmbed";
+import { LinkCompletionController, type LinkTarget } from "./linkCompletion";
+import { OutlineController } from "./outline";
 
 const flintTheme = EditorView.theme({
   "&": {
@@ -68,12 +72,22 @@ export interface FlintEditor {
   focus(): void;
   /** Move the cursor one line up/down (driven by the native keyboard bar). */
   moveCursor(dir: "up" | "down"): void;
+  runCommand(command: string): void;
+  insertAttachment(path: string): void;
+  setReadOnly(readOnly: boolean): void;
 }
 
-export function createEditor(parent: HTMLElement, onChange: (text: string) => void): FlintEditor {
+export function createEditor(
+  parent: HTMLElement,
+  onChange: (text: string) => void,
+  loadLinkTargets: () => Promise<LinkTarget[]>,
+): FlintEditor {
   // Distinguishes a programmatic load from a user edit, so loading a note never
   // looks like a change to save.
   let applying = false;
+  const completion = new LinkCompletionController(parent, loadLinkTargets);
+  const outline = new OutlineController(parent);
+  const editability = new Compartment();
 
   const view = new EditorView({
     parent,
@@ -90,6 +104,9 @@ export function createEditor(parent: HTMLElement, onChange: (text: string) => vo
         syntaxHighlighting(flintHighlight),
         livePreview(),
         inkEmbed(),
+        completion.extension(),
+        editability.of(EditorView.editable.of(true)),
+        EditorView.updateListener.of((update) => outline.update(update)),
         flintTheme,
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applying) onChange(view.state.doc.toString());
@@ -97,6 +114,14 @@ export function createEditor(parent: HTMLElement, onChange: (text: string) => vo
       ],
     }),
   });
+  outline.attach(view);
+
+  // Let the system keyboard provide sentence capitalization, spell checking,
+  // and language-aware autocorrection inside the WKWebView content editor.
+  view.contentDOM.setAttribute("autocapitalize", "sentences");
+  view.contentDOM.setAttribute("autocorrect", "on");
+  view.contentDOM.setAttribute("spellcheck", "true");
+  view.contentDOM.setAttribute("lang", "pt-BR");
 
   return {
     setDoc(text: string) {
@@ -109,6 +134,63 @@ export function createEditor(parent: HTMLElement, onChange: (text: string) => vo
     moveCursor(dir) {
       (dir === "up" ? cursorLineUp : cursorLineDown)(view);
       view.focus();
+    },
+    runCommand(command) {
+      const { from, to } = view.state.selection.main;
+      const selected = view.state.doc.sliceString(from, to);
+      const surround = (open: string, close = open) => {
+        view.dispatch({
+          changes: { from, to, insert: `${open}${selected}${close}` },
+          selection: { anchor: from + open.length + selected.length + close.length },
+        });
+        view.focus();
+      };
+      switch (command) {
+        case "undo": return void undo(view);
+        case "redo": return void redo(view);
+        case "wikilink":
+          view.dispatch({
+            changes: { from, to, insert: `[[${selected}]]` },
+            selection: { anchor: from + 2 + selected.length },
+          });
+          view.focus();
+          return;
+        case "embed": return surround("![[", "]]" );
+        case "attach": return surround("![[", "]]" );
+        case "bold": return surround("**", "**");
+        case "italic": return surround("*", "*");
+        case "strike": return surround("~~", "~~");
+        case "code": return surround("`", "`");
+        case "link": return surround("[", "](url)");
+        case "quote": return surround("> ", "");
+        case "list": return surround("- ", "");
+        case "numberedList": return surround("1. ", "");
+        case "checklist": return surround("- [ ] ", "");
+        case "indent":
+          view.dispatch({ changes: { from, to, insert: selected.split("\n").map((line) => `  ${line}`).join("\n") } });
+          view.focus();
+          return;
+        case "outdent":
+          view.dispatch({ changes: { from, to, insert: selected.split("\n").map((line) => line.replace(/^ {1,2}/, "")).join("\n") } });
+          view.focus();
+          return;
+        case "heading": return surround("# ", "");
+        case "tag": return surround("#", "");
+        default: return;
+      }
+    },
+    insertAttachment(path) {
+      const { from, to } = view.state.selection.main;
+      const text = `![[${path}]]`;
+      view.dispatch({
+        changes: { from, to, insert: text },
+        selection: { anchor: from + text.length },
+      });
+      view.focus();
+    },
+    setReadOnly(readOnly) {
+      view.dispatch({ effects: editability.reconfigure(EditorView.editable.of(!readOnly)) });
+      if (readOnly) view.contentDOM.blur();
     },
   };
 }

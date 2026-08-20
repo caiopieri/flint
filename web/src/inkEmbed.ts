@@ -93,8 +93,56 @@ class InkEmbedWidget extends WidgetType {
   }
 }
 
+class AttachmentEmbedWidget extends WidgetType {
+  constructor(readonly target: string) {
+    super();
+  }
+
+  eq(other: AttachmentEmbedWidget): boolean {
+    return other.target === this.target;
+  }
+
+  toDOM(): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "cm-flint-attachment-embed";
+    wrap.textContent = "Carregando anexo…";
+
+    call<{ data: string; mimeType: string }>("attachment.data", { path: this.target })
+      .then((result) => {
+        wrap.replaceChildren();
+        if (result.mimeType.startsWith("image/")) {
+          const image = document.createElement("img");
+          image.alt = this.target;
+          image.src = `data:${result.mimeType};base64,${result.data}`;
+          wrap.appendChild(image);
+        } else if (result.mimeType === "application/pdf") {
+          const frame = document.createElement("iframe");
+          frame.title = this.target;
+          frame.src = `data:application/pdf;base64,${result.data}`;
+          wrap.appendChild(frame);
+        } else {
+          wrap.classList.add("cm-flint-attachment-file");
+          wrap.textContent = `Anexo: ${this.target}`;
+        }
+      })
+      .catch(() => {
+        wrap.classList.add("cm-flint-attachment-missing");
+        wrap.textContent = "Anexo indisponível";
+      });
+    return wrap;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
 function isInkTarget(target: string): boolean {
   return target.trim().toLowerCase().endsWith(".ink");
+}
+
+function isAttachmentTarget(target: string): boolean {
+  return target.trim().toLocaleLowerCase().startsWith("attachments/");
 }
 
 function buildDecorations(view: EditorView): DecorationSet {
@@ -108,8 +156,11 @@ function buildDecorations(view: EditorView): DecorationSet {
         const node = ref.node;
         if (node.name !== "Embed" || selectionTouches(state, node.from, node.to)) return;
         const target = state.doc.sliceString(node.from + 3, node.to - 2).trim();
-        if (!isInkTarget(target)) return;
-        deco.push(Decoration.replace({ widget: new InkEmbedWidget(target) }).range(node.from, node.to));
+        if (!isInkTarget(target) && !isAttachmentTarget(target)) return;
+        const widget = isInkTarget(target)
+          ? new InkEmbedWidget(target)
+          : new AttachmentEmbedWidget(target);
+        deco.push(Decoration.replace({ widget }).range(node.from, node.to));
       },
     });
   }
@@ -153,6 +204,34 @@ const inkEmbedTheme = EditorView.theme({
     objectFit: "contain",
   },
   ".cm-flint-ink-missing": {
+    borderStyle: "dashed",
+  },
+  ".cm-flint-attachment-embed": {
+    display: "block",
+    width: "100%",
+    maxWidth: "520px",
+    minHeight: "44px",
+    margin: "var(--flint-space-3) 0",
+    padding: "var(--flint-space-2)",
+    border: "1px solid var(--flint-border)",
+    borderRadius: "var(--flint-radius-md)",
+    background: "var(--flint-surface)",
+    color: "var(--flint-text-secondary)",
+    boxSizing: "border-box",
+  },
+  ".cm-flint-attachment-embed img": {
+    display: "block",
+    width: "100%",
+    maxHeight: "360px",
+    objectFit: "contain",
+  },
+  ".cm-flint-attachment-embed iframe": {
+    display: "block",
+    width: "100%",
+    height: "360px",
+    border: "0",
+  },
+  ".cm-flint-attachment-file, .cm-flint-attachment-missing": {
     borderStyle: "dashed",
   },
 });

@@ -5,14 +5,24 @@ import UniformTypeIdentifiers
 /// navigator, and owns the single folder picker (.fileImporter, ADR-011).
 struct ContentView: View {
     @State private var vault = VaultStore()
+    @State private var modelStore = ModelStore()
     @State private var isPickingFolder = false
+    @State private var showLaunchScreen = true
+    @AppStorage("flint.appearance") private var appearance = "system"
 
     var body: some View {
-        Group {
-            if vault.hasVault {
-                VaultNavigator(vault: vault, chooseVault: { isPickingFolder = true })
-            } else {
-                VaultEmptyState { isPickingFolder = true }
+        ZStack {
+            Group {
+                if vault.hasVault {
+                    VaultNavigator(vault: vault, modelStore: modelStore, chooseVault: { isPickingFolder = true })
+                } else {
+                    VaultEmptyState { isPickingFolder = true }
+                }
+            }
+
+            if showLaunchScreen {
+                FlintLaunchScreen(hasVault: vault.hasVault)
+                    .transition(.opacity)
             }
         }
         // Layer-2 haptics (iPhone only; no-op on iPad), per INTERACTION.md allowlist:
@@ -36,6 +46,22 @@ struct ContentView: View {
             Button("OK", role: .cancel) {}
         } message: { message in
             Text(message)
+        }
+        .task {
+            try? await Task.sleep(for: .milliseconds(450))
+            while vault.isLoadingTree {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            showLaunchScreen = false
+        }
+        .preferredColorScheme(preferredColorScheme)
+    }
+
+    private var preferredColorScheme: ColorScheme? {
+        switch appearance {
+        case "light": .light
+        case "dark": .dark
+        default: nil
         }
     }
 }

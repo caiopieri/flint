@@ -13,12 +13,16 @@ enum VaultFileSystem {
         case invalidName
         case nameInUse(String)
         case invalidMove
+        case attachmentTooLarge
+        case unsupportedAttachment
         var errorDescription: String? {
             switch self {
             case .coordination(let e): return e.localizedDescription
             case .invalidName: return "Please enter a name."
             case .nameInUse(let n): return "“\(n)” already exists here."
             case .invalidMove: return "Can't move a folder into itself."
+            case .attachmentTooLarge: return "This attachment is larger than 50 MB."
+            case .unsupportedAttachment: return "Markdown and Ink files must be opened as notes or notebooks."
             }
         }
     }
@@ -56,6 +60,18 @@ enum VaultFileSystem {
             counter += 1
         }
         try createFile(Data(), at: candidate)
+        return candidate
+    }
+
+    static func createCanvas(in directory: URL, baseName: String = "Board") throws -> URL {
+        let fileManager = FileManager.default
+        var candidate = directory.appendingPathComponent("(baseName).canvas")
+        var counter = 1
+        while fileManager.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("(baseName) (counter).canvas")
+            counter += 1
+        }
+        try createFile(try BoardDocument.empty.encoded(), at: candidate)
         return candidate
     }
 
@@ -116,6 +132,54 @@ enum VaultFileSystem {
         }
         if let coordError { throw VaultError.coordination(coordError) }
         if let thrown { throw thrown }
+    }
+
+    /// Copies a user-picked file into the vault's attachment area. The source
+    /// remains outside the vault; only this provider-facing layer performs I/O.
+    static func importAttachment(from source: URL, into root: URL) throws -> URL {
+        let extensionName = source.pathExtension.lowercased()
+        guard extensionName != "md", extensionName != "ink" else {
+            throw VaultError.unsupportedAttachment
+        }
+        let didAccess = source.startAccessingSecurityScopedResource()
+        defer { if didAccess { source.stopAccessingSecurityScopedResource() } }
+
+        let values = try source.resourceValues(forKeys: [.fileSizeKey])
+        guard (values.fileSize ?? 0) <= 50 * 1024 * 1024 else {
+            throw VaultError.attachmentTooLarge
+        }
+
+        let attachmentDirectory = root.appendingPathComponent("attachments", isDirectory: true)
+        let fileManager = FileManager.default
+        let directoryCoordinator = NSFileCoordinator()
+        var directoryError: NSError?
+        var directoryFailure: Error?
+        directoryCoordinator.coordinate(
+            writingItemAt: root, options: .forMerging, error: &directoryError
+        ) { coordinatedRoot in
+            do {
+                try fileManager.createDirectory(
+                    at: coordinatedRoot.appendingPathComponent("attachments", isDirectory: true),
+                    withIntermediateDirectories: true
+                )
+            } catch { directoryFailure = error }
+        }
+        if let directoryError { throw VaultError.coordination(directoryError) }
+        if let directoryFailure { throw directoryFailure }
+
+        let originalName = sanitizedAttachmentName(source.lastPathComponent)
+        var candidate = attachmentDirectory.appendingPathComponent(originalName)
+        var counter = 1
+        while fileManager.fileExists(atPath: candidate.path) {
+            let stem = candidate.deletingPathExtension().lastPathComponent
+            let suffix = candidate.pathExtension.isEmpty ? "" : ".\(candidate.pathExtension)"
+            candidate = attachmentDirectory.appendingPathComponent("\(stem) \(counter)\(suffix)")
+            counter += 1
+        }
+
+        let data = try Data(contentsOf: source, options: .mappedIfSafe)
+        try writeData(data, to: candidate)
+        return candidate
     }
 
     /// Rename a note, notebook, or folder in place. For files the existing
@@ -200,6 +264,14 @@ enum VaultFileSystem {
         if let thrown { throw thrown }
     }
 
+    private static func sanitizedAttachmentName(_ name: String) -> String {
+        let candidate = name
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: "\\", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return candidate.isEmpty ? "attachment" : candidate
+    }
+
     private static func coordinatedRead<T>(_ url: URL, _ body: (URL) throws -> T) throws -> T {
         let coordinator = NSFileCoordinator()
         var coordError: NSError?
@@ -223,7 +295,7 @@ enum VaultFileSystem {
         let createdAt = values?.creationDate
 
         if !isDir {
-            guard ["md", "ink"].contains(url.pathExtension.lowercased()) else { return nil }
+            guard ["md", "ink", "canvas"].contains(url.pathExtension.lowercased()) else { return nil }
             return VaultNode(
                 url: url,
                 name: url.deletingPathExtension().lastPathComponent,

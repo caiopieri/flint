@@ -8,6 +8,7 @@
 // Native pushes note switches via window.flintOpen(path).
 import { call } from "./bridge";
 import { createEditor, type FlintEditor } from "./editor";
+import type { LinkTarget } from "./linkCompletion";
 
 const SAVE_DEBOUNCE_MS = 400;
 
@@ -38,6 +39,16 @@ function scheduleSave(text: string): void {
   saveTimer = setTimeout(() => void flushSave(), SAVE_DEBOUNCE_MS);
 }
 
+async function loadLinkTargets(): Promise<LinkTarget[]> {
+  try {
+    const result = await call<{ targets: LinkTarget[] }>("doc.links");
+    return result.targets ?? [];
+  } catch (err) {
+    console.error("doc.links failed", err);
+    return [];
+  }
+}
+
 async function openPath(path: string | null): Promise<void> {
   await flushSave(); // never lose the previous note's pending edits
   currentPath = path;
@@ -60,16 +71,25 @@ async function openPath(path: string | null): Promise<void> {
   void openPath(path);
 };
 
-// Native → JS: the keyboard bar's up/down arrows move the cursor by line.
-(window as unknown as { flintMoveCursor: (dir: "up" | "down") => void }).flintMoveCursor = (dir) => {
-  editor?.moveCursor(dir);
+// Native → JS: the compact keyboard toolbar sends editor commands.
+(window as unknown as { flintCommand: (command: string) => void }).flintCommand = (command) => {
+  editor?.runCommand(command);
+};
+
+// Native → JS: the document picker inserts the imported vault-relative path.
+(window as unknown as { flintInsertAttachment: (path: string) => void }).flintInsertAttachment = (path) => {
+  if (typeof path === "string" && path.length > 0) editor?.insertAttachment(path);
+};
+
+(window as unknown as { flintSetReadOnly: (readOnly: boolean) => void }).flintSetReadOnly = (readOnly) => {
+  if (typeof readOnly === "boolean") editor?.setReadOnly(readOnly);
 };
 
 async function main(): Promise<void> {
   const mount = document.getElementById("editor");
   if (!mount) return;
 
-  editor = createEditor(mount, scheduleSave);
+  editor = createEditor(mount, scheduleSave, loadLinkTargets);
 
   // Pull the initially-selected note (avoids a readiness race on first mount).
   try {

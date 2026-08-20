@@ -8,6 +8,11 @@ struct InkPageOverview: View {
     var onSelect: (Int) -> Void
     var onReorder: (IndexSet, Int) -> Void
     var onAdd: () -> Void
+    var onDelete: (Int) -> Void
+    var canUndoPages: Bool
+    var canRedoPages: Bool
+    var onUndoPages: () -> Void
+    var onRedoPages: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var draggingID: UUID?
@@ -45,6 +50,13 @@ struct InkPageOverview: View {
                             onReorder: onReorder
                         )
                     )
+                    .contextMenu {
+                        if pages.count > 1 {
+                            Button("Delete page", systemImage: "trash", role: .destructive) {
+                                onDelete(index)
+                            }
+                        }
+                    }
                 }
             }
             .padding(FlintSpace.s4)
@@ -54,13 +66,25 @@ struct InkPageOverview: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button("Done") { dismiss() }
+                HStack(spacing: 0) {
+                    Button { onUndoPages() } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .disabled(!canUndoPages)
+                    Button { onRedoPages() } label: {
+                        Image(systemName: "arrow.uturn.forward")
+                    }
+                    .disabled(!canRedoPages)
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    onAdd()
-                } label: {
-                    Image(systemName: "plus")
+                HStack(spacing: FlintSpace.s2) {
+                    Button {
+                        onAdd()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    Button("Done") { dismiss() }
                 }
             }
         }

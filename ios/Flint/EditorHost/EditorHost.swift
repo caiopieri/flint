@@ -7,6 +7,7 @@
 // bridge (`doc.load` / `doc.save`). Native owns *which* note is open and pushes
 // the path in via `flintOpen`; the editor owns the live buffer.
 import SwiftUI
+import UniformTypeIdentifiers
 import WebKit
 
 /// SwiftUI host for the editor's WKWebView. One instance is reused across note
@@ -16,6 +17,9 @@ struct EditorWebView: UIViewRepresentable {
     let vault: VaultStore
     /// Vault-relative path of the selected note (nil → nothing selected).
     let path: String?
+    /// Incremented by the navigation shell before presenting its sidebar.
+    let dismissEditingToken: Int
+    let isReadOnly: Bool
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -48,19 +52,32 @@ struct EditorWebView: UIViewRepresentable {
             coordinator.openedPath = path
             coordinator.open(path: path)
         }
+        if coordinator.dismissEditingToken != dismissEditingToken {
+            coordinator.dismissEditingToken = dismissEditingToken
+            webView.endEditing(true)
+        }
+        if coordinator.isReadOnly != isReadOnly {
+            coordinator.isReadOnly = isReadOnly
+            coordinator.setReadOnly(isReadOnly)
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(vault: vault) }
 
     @MainActor final class Coordinator: NSObject, WKNavigationDelegate {
         let bridge: WebBridge
+        private let vault: VaultStore
         weak var webView: WKWebView?
         var openedPath: String?
         var didOpen = false
+        var dismissEditingToken = 0
+        var isReadOnly = false
         /// Held strongly so the custom keyboard bar outlives each install.
         private var accessory: FlintKeyboardAccessory?
+        private var attachmentPicker: FlintAttachmentPicker?
 
         init(vault: VaultStore) {
+            self.vault = vault
             bridge = WebBridge(vault: vault)
             super.init()
         }
@@ -68,9 +85,18 @@ struct EditorWebView: UIViewRepresentable {
         // The inner content view exists once the page has loaded — swap in the
         // transparent keyboard bar then.
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            let bar = accessory ?? FlintKeyboardAccessory(webView: webView)
+            let bar = accessory ?? FlintKeyboardAccessory(webView: webView) { [weak self] in
+                self?.presentAttachmentPicker()
+            }
             accessory = bar
             webView.installFlintKeyboardAccessory(bar)
+        }
+
+        func presentAttachmentPicker() {
+            guard let webView else { return }
+            let picker = FlintAttachmentPicker(vault: vault, webView: webView)
+            attachmentPicker = picker
+            picker.present()
         }
 
         /// Tell the editor which note to show (or `null` to clear).
@@ -82,6 +108,52 @@ struct EditorWebView: UIViewRepresentable {
                     arguments: ["path": path ?? NSNull()],
                     contentWorld: .page
                 )
+            }
+        }
+
+        func setReadOnly(_ readOnly: Bool) {
+            guard let webView else { return }
+            Task {
+                _ = try? await webView.callAsyncJavaScript(
+                    "if (window.flintSetReadOnly) { window.flintSetReadOnly(readOnly); }",
+                    arguments: ["readOnly": readOnly],
+                    contentWorld: .page
+                )
+            }
+        }
+    }
+}
+
+/// Owns the system document picker and imports the selected file through the
+/// vault provider. Picker URLs never cross into JavaScript.
+@MainActor
+private final class FlintAttachmentPicker: NSObject, UIDocumentPickerDelegate {
+    private let vault: VaultStore
+    private weak var webView: WKWebView?
+
+    init(vault: VaultStore, webView: WKWebView) {
+        self.vault = vault
+        self.webView = webView
+    }
+
+    func present() {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+        picker.delegate = self
+        webView?.flintPresent(picker)
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let source = urls.first, let webView else { return }
+        Task { @MainActor in
+            do {
+                let path = try await vault.importAttachment(from: source)
+                _ = try? await webView.callAsyncJavaScript(
+                    "if (window.flintInsertAttachment) { window.flintInsertAttachment(path); }",
+                    arguments: ["path": path],
+                    contentWorld: .page
+                )
+            } catch {
+                vault.errorMessage = "Couldn't import attachment: \(error.localizedDescription)"
             }
         }
     }
@@ -134,6 +206,19 @@ final class FlintSchemeHandler: NSObject, WKURLSchemeHandler {
         case "json", "map": return "application/json"
         case "svg": return "image/svg+xml"
         default: return "application/octet-stream"
+        }
+    }
+}
+
+private extension WKWebView {
+    func flintPresent(_ controller: UIViewController) {
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let viewController = current as? UIViewController {
+                viewController.present(controller, animated: true)
+                return
+            }
+            responder = current.next
         }
     }
 }

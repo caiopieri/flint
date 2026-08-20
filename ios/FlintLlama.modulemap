@@ -1,0 +1,4 @@
+module FlintLlama {
+  header "FlintLlama.h"
+  export *
+}

@@ -31,6 +31,7 @@ import {
 import type { Range } from "@codemirror/state";
 import type { SyntaxNode } from "@lezer/common";
 import type { InlineContext, MarkdownConfig } from "@lezer/markdown";
+import { call } from "./bridge";
 
 // A zero-config replace decoration that simply hides the range it covers.
 const hide = Decoration.replace({});
@@ -298,6 +299,53 @@ const livePreviewPlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 );
 
+function openWikiLink(event: MouseEvent, view: EditorView): boolean {
+  const clicked = event.target;
+  if (!(clicked instanceof Element) || !clicked.closest(".cm-flint-link")) {
+    return false;
+  }
+
+  const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+  if (pos === null) return false;
+
+  // Decorations can make the rendered text resolve to a sibling position
+  // instead of the WikiLink node. Resolve from the source line as a fallback.
+  const line = view.state.doc.lineAt(pos);
+  const offset = pos - line.from;
+  const opener = line.text.lastIndexOf("[[", offset);
+  const closer = line.text.indexOf("]]", offset);
+  const targetFrom = opener + 2;
+  if (opener >= 0 && closer >= targetFrom && offset >= targetFrom && offset <= closer) {
+    const target = line.text.slice(opener + 2, closer).trim();
+    if (!target) return false;
+    event.preventDefault();
+    void call<{ opened: boolean }>("note.open", { target }).catch((error) => {
+      console.error("wikilink open failed", error);
+    });
+    return true;
+  }
+
+  let node: SyntaxNode | null = null;
+  for (const assoc of [-1, 1] as const) {
+    let candidate: SyntaxNode | null = syntaxTree(view.state).resolve(pos, assoc);
+    while (candidate && candidate.name !== "WikiLink") candidate = candidate.parent;
+    if (candidate) {
+      node = candidate;
+      break;
+    }
+  }
+  if (!node) return false;
+
+  const target = view.state.doc.sliceString(node.from + 2, node.to - 2).trim();
+  if (!target) return false;
+
+  event.preventDefault();
+  void call<{ opened: boolean }>("note.open", { target }).catch((error) => {
+    console.error("wikilink open failed", error);
+  });
+  return true;
+}
+
 // Styling for the rendered content. Colors/sizes come from the design tokens so
 // the editor matches native chrome and follows dark/light (ADR-D03/D04).
 const livePreviewTheme = EditorView.theme({
@@ -350,5 +398,9 @@ const livePreviewTheme = EditorView.theme({
 
 /** The Live Preview extension: conceal-and-render Markdown with cursor reveal. */
 export function livePreview() {
-  return [livePreviewPlugin, livePreviewTheme];
+  return [
+    livePreviewPlugin,
+    livePreviewTheme,
+    EditorView.domEventHandlers({ mousedown: openWikiLink }),
+  ];
 }

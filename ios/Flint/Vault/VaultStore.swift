@@ -6,6 +6,7 @@
 // never touches FileManager/NSFileCoordinator itself.
 import Foundation
 import Observation
+import UniformTypeIdentifiers
 
 @MainActor
 @Observable
@@ -329,7 +330,9 @@ final class VaultStore {
               let root = rootURL,
               let tree = tree else { return }
 
-        let flat = flattenNotes(tree, root: root)
+        let flat = await Task.detached(priority: .utility) {
+            flattenMarkdownNotes(tree, root: root)
+        }.value
         guard !Task.isCancelled else { return }
 
         do {
@@ -340,22 +343,31 @@ final class VaultStore {
             let texts = try await provider.readForIndex(toReadURLs)
             guard !Task.isCancelled else { return }
 
-            let mtimeByPath = Dictionary(flat.map { ($0.path, $0.mtime) }, uniquingKeysWith: { _, b in b })
-            let upserts: [(path: String, title: String, mtime: Date, body: String)] =
-                toReadURLs.compactMap { url in
-                    guard let body = texts[url] else { return nil }
-                    let rel = Self.relativePath(of: url, under: root)
-                    let title = url.deletingPathExtension().lastPathComponent
-                    let mtime = mtimeByPath[rel] ?? Date()
-                    return (rel, title, mtime, body)
-                }
+            let payload = await Task.detached(priority: .utility) {
+                let mtimeByPath = Dictionary(flat.map { ($0.path, $0.mtime) }, uniquingKeysWith: { _, b in b })
+                let upserts: [(path: String, title: String, mtime: Date, body: String)] =
+                    toReadURLs.compactMap { url in
+                        guard let body = texts[url] else { return nil }
+                        let rel = relativeVaultPath(of: url, under: root)
+                        let title = url.deletingPathExtension().lastPathComponent
+                        let mtime = mtimeByPath[rel] ?? Date()
+                        return (rel, title, mtime, body)
+                    }
+                let tags = Dictionary(
+                    upserts.map { ($0.path, Frontmatter.tags(in: $0.body)) },
+                    uniquingKeysWith: { _, latest in latest }
+                )
+                return (upserts, tags)
+            }.value
+
+            let upserts = payload.0
 
             try await index.apply(upserts: upserts, deletes: toDelete)
             guard !Task.isCancelled else { return }
 
             // Incremental tag update from the just-indexed content.
             for path in toDelete { tagsByPath.removeValue(forKey: path) }
-            for item in upserts { tagsByPath[item.path] = Frontmatter.tags(in: item.body) }
+            for (path, tags) in payload.1 { tagsByPath[path] = tags }
 
             // Relaunch: index already had data but nothing changed → tag map is still
             // empty (no upserts ran). Rehydrate from the stored bodies off-main.
@@ -372,17 +384,6 @@ final class VaultStore {
         } catch {
             // Index sync is best-effort — a failure just means slightly stale results.
         }
-    }
-
-    private func flattenNotes(_ node: VaultNode, root: URL) -> [(path: String, mtime: Date)] {
-        var result: [(String, Date)] = []
-        if !node.isDirectory, node.url.pathExtension.lowercased() == "md" {
-            result.append((Self.relativePath(of: node.url, under: root), node.modifiedAt ?? Date()))
-        }
-        for child in node.children ?? [] {
-            result.append(contentsOf: flattenNotes(child, root: root))
-        }
-        return result
     }
 
     // MARK: - Search
@@ -430,6 +431,81 @@ final class VaultStore {
         selection = node
     }
 
+    /// Coarse link catalog for the editor. The webview loads this once when a
+    /// note opens and filters it locally while the user types `[[`.
+    func linkTargets() -> [[String: String]] {
+        guard let rootURL, let tree else { return [] }
+        return linkableNodes(in: tree).compactMap { node in
+            let extensionName = node.url.pathExtension.lowercased()
+            let path = Self.relativePath(of: node.url, under: rootURL)
+            let suffix = extensionName == "md" ? ".md" : ".ink"
+            guard path.lowercased().hasSuffix(suffix) else { return nil }
+            let target = String(path.dropLast(suffix.count))
+            return [
+                "label": node.name,
+                "path": path,
+                "target": target,
+                "kind": extensionName
+            ]
+        }.sorted {
+            $0["target"]?.localizedCaseInsensitiveCompare($1["target"] ?? "") == .orderedAscending
+        }
+    }
+
+    /// Resolve and open an Obsidian-style `[[note]]` target from the current
+    /// vault tree. Resolution is tree-based rather than path-based so a link
+    /// cannot escape the user-selected vault through `..` or an absolute path.
+    @discardableResult
+    func openNoteTarget(_ target: String) -> Bool {
+        guard let rootURL, let tree else { return false }
+        let rawTarget = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        let noteTarget = rawTarget.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+            .first.map(String.init) ?? ""
+        guard !noteTarget.isEmpty,
+              !noteTarget.hasPrefix("/"),
+              !noteTarget.contains("\\"),
+              !noteTarget.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { return false }
+
+        let extensionName = (noteTarget as NSString).pathExtension.lowercased()
+        let hasKnownExtension = extensionName == "md" || extensionName == "ink"
+        let matches: [VaultNode]
+        if noteTarget.contains("/") {
+            let targets = hasKnownExtension ? [noteTarget] : ["\(noteTarget).md", "\(noteTarget).ink"]
+            matches = targets.compactMap { path in
+                findNode(rootURL.appendingPathComponent(path), in: tree)
+            }
+        } else {
+            let nodes = linkableNodes(in: tree).filter { node in
+                if hasKnownExtension {
+                    return node.url.lastPathComponent.caseInsensitiveCompare(noteTarget) == .orderedSame
+                }
+                return node.name.caseInsensitiveCompare(noteTarget) == .orderedSame
+            }
+            matches = nodes
+        }
+
+        let markdownMatches = matches.filter { $0.url.pathExtension.lowercased() == "md" }
+        let inkMatches = matches.filter { $0.url.pathExtension.lowercased() == "ink" }
+        // A bare [[name]] follows note-first semantics when both a note and a
+        // notebook share the same basename. Explicit .ink remains valid.
+        let match: VaultNode?
+        if extensionName == "md" {
+            match = markdownMatches.count == 1 ? markdownMatches[0] : nil
+        } else if extensionName == "ink" {
+            match = inkMatches.count == 1 ? inkMatches[0] : nil
+        } else if markdownMatches.count == 1 {
+            match = markdownMatches[0]
+        } else if markdownMatches.isEmpty, inkMatches.count == 1 {
+            match = inkMatches[0]
+        } else {
+            match = nil
+        }
+
+        guard let match else { return false }
+        open(match)
+        return true
+    }
+
     /// Load a note's text for the editor (bridge `doc.load`). Path is vault-relative.
     func editorLoad(_ relativePath: String) async throws -> String {
         guard let provider, let url = resolve(relativePath) else { throw VaultStoreError.noVault }
@@ -442,14 +518,80 @@ final class VaultStore {
         try await provider.write(text, to: url)
     }
 
+    /// Copies a user-picked file into `attachments/` and returns its vault-
+    /// relative path for insertion into the current Markdown document.
+    func importAttachment(from source: URL) async throws -> String {
+        guard let provider, let root = rootURL else { throw VaultStoreError.noVault }
+        let url = try await provider.importAttachment(from: source, into: root)
+        scheduleReload()
+        return Self.relativePath(of: url, under: root)
+    }
+
+    /// Reads an attachment only after resolving it beneath the open vault.
+    /// The webview receives bytes, never an absolute filesystem URL.
+    func attachmentData(_ relativePath: String) async throws -> (data: Data, mimeType: String) {
+        guard relativePath.split(separator: "/", omittingEmptySubsequences: true).first == "attachments" else {
+            throw VaultStoreError.invalidPath
+        }
+        guard let provider, let url = resolve(relativePath) else { throw VaultStoreError.noVault }
+        let data = try await provider.readData(url)
+        let mimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+            ?? "application/octet-stream"
+        return (data, mimeType)
+    }
+
+    /// Builds bounded context from the disposable search index and the current
+    /// editor buffer. No model or network call happens in this harness.
+    func aiContext(query: String, currentNoteText: String?) async -> AIContext {
+        var hits: [SearchHit] = []
+        if let searchIndex {
+            hits = (try? await searchIndex.query(query)) ?? []
+        }
+        return AI.makeContext(query: query, currentNoteText: currentNoteText, hits: hits)
+    }
+
     func notebookLoad(_ relativePath: String) async throws -> InkNotebook {
         guard let provider, let url = resolve(relativePath) else { throw VaultStoreError.noVault }
-        return try InkNotebook.decode(try await provider.readData(url))
+        let data = try await provider.readData(url)
+        return try await Task.detached(priority: .utility) {
+            try InkNotebook.decode(data)
+        }.value
     }
 
     func notebookSave(_ relativePath: String, _ notebook: InkNotebook) async throws {
         guard let provider, let url = resolve(relativePath) else { throw VaultStoreError.noVault }
-        try await provider.writeData(try notebook.encoded(), to: url)
+        let data = try await Task.detached(priority: .utility) {
+            try notebook.encoded()
+        }.value
+        try await provider.writeData(data, to: url)
+    }
+
+    func boardLoad(_ relativePath: String) async throws -> BoardDocument {
+        guard relativePath.lowercased().hasSuffix(".canvas"),
+              let provider, let url = resolve(relativePath) else { throw VaultStoreError.invalidPath }
+        let data = try await provider.readData(url)
+        return try await Task.detached(priority: .utility) {
+            try BoardDocument.decode(data)
+        }.value
+    }
+
+    func boardSave(_ relativePath: String, _ document: BoardDocument) async throws {
+        guard relativePath.lowercased().hasSuffix(".canvas"),
+              let provider, let url = resolve(relativePath) else { throw VaultStoreError.invalidPath }
+        let data = try await Task.detached(priority: .utility) {
+            try document.encoded()
+        }.value
+        try await provider.writeData(data, to: url)
+    }
+
+    /// Coarse metadata snapshot for the Board's local add-note picker.
+    func boardNotes() -> [[String: String]] {
+        guard let rootURL, let tree else { return [] }
+        return markdownNodes(in: tree).map { node in
+            ["path": Self.relativePath(of: node.url, under: rootURL), "title": node.name]
+        }.sorted {
+            ($0["title"] ?? "").localizedCaseInsensitiveCompare($1["title"] ?? "") == .orderedAscending
+        }
     }
 
     func requestInk(_ target: String) {
@@ -492,10 +634,10 @@ final class VaultStore {
     }
 
     /// Create a new note at the vault root, then select and open it.
-    func createNote() async {
+    func createNote(baseName: String = "Untitled") async {
         guard let provider, let root = rootURL else { return }
         do {
-            let url = try await provider.createNote(in: root, baseName: "Untitled")
+            let url = try await provider.createNote(in: root, baseName: baseName)
             let node = optimisticFileNode(url)
             insertOptimisticRootChild(node)
             open(node)
@@ -505,20 +647,82 @@ final class VaultStore {
         }
     }
 
+    /// Open an existing wikilink, or create a Markdown note for a new bare
+    /// target. Creation stays at the vault root until nested-note semantics
+    /// are explicitly designed.
+    @discardableResult
+    func openOrCreateNoteTarget(_ target: String) async -> Bool {
+        if openNoteTarget(target) { return true }
+        guard let details = newNoteTargetDetails(from: target) else { return false }
+        guard let provider, let root = rootURL else { return false }
+
+        do {
+            let url: URL
+            if details.extensionName == "ink" {
+                url = try await provider.createInk(in: root, baseName: details.baseName)
+            } else {
+                url = try await provider.createNote(in: root, baseName: details.baseName)
+            }
+            let node = optimisticFileNode(url)
+            insertOptimisticRootChild(node)
+            open(node)
+            scheduleReload()
+            return true
+        } catch {
+            errorMessage = "Couldn't create a note: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    private func newNoteTargetDetails(from target: String) -> (baseName: String, extensionName: String)? {
+        let rawTarget = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        let noteTarget = rawTarget.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+            .first.map(String.init) ?? ""
+        guard !noteTarget.isEmpty,
+              !noteTarget.hasPrefix("/"),
+              !noteTarget.contains("/"),
+              !noteTarget.contains("\\"),
+              !noteTarget.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else {
+            return nil
+        }
+
+        let extensionName = (noteTarget as NSString).pathExtension.lowercased()
+        guard extensionName.isEmpty || extensionName == "md" || extensionName == "ink" else { return nil }
+        let baseName = extensionName == "md" || extensionName == "ink"
+            ? String(noteTarget.dropLast(extensionName.count + 1))
+            : noteTarget
+        let trimmed = baseName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != ".", trimmed != ".." else { return nil }
+        return (trimmed, extensionName == "ink" ? "ink" : "md")
+    }
+
     func createDrawing() async {
         await createNotebook()
     }
 
-    func createNotebook() async {
+    func createNotebook(baseName: String = "Notebook") async {
         guard let provider, let root = rootURL else { return }
         do {
-            let url = try await provider.createInk(in: root, baseName: "Notebook")
+            let url = try await provider.createInk(in: root, baseName: baseName)
             let node = optimisticFileNode(url)
             insertOptimisticRootChild(node)
             open(node)
             scheduleReload()
         } catch {
             errorMessage = "Couldn't create a notebook: \(error.localizedDescription)"
+        }
+    }
+
+    func createBoard(baseName: String = "Board") async {
+        guard let provider, let root = rootURL else { return }
+        do {
+            let url = try await provider.createCanvas(in: root, baseName: baseName)
+            let node = optimisticFileNode(url)
+            insertOptimisticRootChild(node)
+            open(node)
+            scheduleReload()
+        } catch {
+            errorMessage = "Couldn't create a Board: \(error.localizedDescription)"
         }
     }
 
@@ -544,15 +748,18 @@ final class VaultStore {
     // MARK: - Rename / move / delete
 
     /// Rename a note or folder. Keeps it selected if it was the open note.
-    func rename(_ node: VaultNode, to newName: String) async {
-        guard let provider else { return }
+    @discardableResult
+    func rename(_ node: VaultNode, to newName: String) async -> URL? {
+        guard let provider else { return nil }
         do {
             let newURL = try await provider.rename(node.url, to: newName)
             let wasSelected = selection?.url == node.url
             await reload()
             if wasSelected, let moved = findNode(newURL, in: tree) { selection = moved }
+            return newURL
         } catch {
             errorMessage = "Couldn't rename: \(error.localizedDescription)"
+            return nil
         }
     }
 
@@ -584,6 +791,12 @@ final class VaultStore {
     /// Find a node by its URL anywhere in the current tree (used by drag-drop).
     func node(at url: URL) -> VaultNode? { findNode(url, in: tree) }
 
+    /// Return a vault-relative path for a URL that belongs to the open vault.
+    func relativePath(for url: URL) -> String? {
+        guard let rootURL else { return nil }
+        return Self.relativePath(of: url, under: rootURL)
+    }
+
     private func inkNodes(in node: VaultNode) -> [VaultNode] {
         var result: [VaultNode] = []
         if !node.isDirectory, node.url.pathExtension.lowercased() == "ink" {
@@ -591,6 +804,24 @@ final class VaultStore {
         }
         for child in node.children ?? [] {
             result.append(contentsOf: inkNodes(in: child))
+        }
+        return result
+    }
+
+    private func markdownNodes(in node: VaultNode) -> [VaultNode] {
+        var result: [VaultNode] = []
+        if !node.isDirectory, node.url.pathExtension.lowercased() == "md" { result.append(node) }
+        for child in node.children ?? [] { result.append(contentsOf: markdownNodes(in: child)) }
+        return result
+    }
+
+    private func linkableNodes(in node: VaultNode) -> [VaultNode] {
+        var result: [VaultNode] = []
+        if !node.isDirectory, ["md", "ink"].contains(node.url.pathExtension.lowercased()) {
+            result.append(node)
+        }
+        for child in node.children ?? [] {
+            result.append(contentsOf: linkableNodes(in: child))
         }
         return result
     }
@@ -628,7 +859,20 @@ final class VaultStore {
 
     /// Resolve a vault-relative path (from the editor) to an absolute URL.
     private func resolve(_ relativePath: String) -> URL? {
-        rootURL?.appendingPathComponent(relativePath)
+        guard let rootURL,
+              !relativePath.isEmpty,
+              !relativePath.hasPrefix("/"),
+              !relativePath.contains("\\") else { return nil }
+        let components = relativePath.split(separator: "/", omittingEmptySubsequences: true)
+        guard !components.isEmpty, !components.contains(where: { $0 == "." || $0 == ".." }) else {
+            return nil
+        }
+        let url = rootURL.appendingPathComponent(relativePath)
+        let base = rootURL.standardizedFileURL.path.hasSuffix("/")
+            ? rootURL.standardizedFileURL.path
+            : rootURL.standardizedFileURL.path + "/"
+        guard url.standardizedFileURL.path.hasPrefix(base) else { return nil }
+        return url
     }
 
     /// A file's path relative to the vault root, used as its bridge identity.
@@ -638,11 +882,29 @@ final class VaultStore {
     }
 }
 
+private func flattenMarkdownNotes(_ node: VaultNode, root: URL) -> [(path: String, mtime: Date)] {
+    var result: [(String, Date)] = []
+    if !node.isDirectory, node.url.pathExtension.lowercased() == "md" {
+        result.append((relativeVaultPath(of: node.url, under: root), node.modifiedAt ?? Date()))
+    }
+    for child in node.children ?? [] {
+        result.append(contentsOf: flattenMarkdownNotes(child, root: root))
+    }
+    return result
+}
+
+private func relativeVaultPath(of url: URL, under root: URL) -> String {
+    let base = root.path.hasSuffix("/") ? root.path : root.path + "/"
+    return url.path.hasPrefix(base) ? String(url.path.dropFirst(base.count)) : url.lastPathComponent
+}
+
 enum VaultStoreError: LocalizedError {
     case noVault
+    case invalidPath
     var errorDescription: String? {
         switch self {
         case .noVault: return "No vault is open."
+        case .invalidPath: return "The requested vault path is not allowed."
         }
     }
 }

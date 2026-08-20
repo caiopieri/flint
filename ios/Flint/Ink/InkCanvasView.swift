@@ -1,24 +1,44 @@
 import PencilKit
 import SwiftUI
 
+enum InkCanvasCommand: Equatable {
+    case undo
+    case redo
+    case zoomOut
+    case zoomIn
+    case fit
+}
+
 struct InkCanvasView: UIViewRepresentable {
     var drawing: PKDrawing
     var drawingRevision: Int
     var paper: InkNotebook.Paper
+    var command: (id: Int, action: InkCanvasCommand)?
+    var isToolPickerVisible: Bool
     var onDrawingChanged: (PKDrawing) -> Void
+    var onUndoStateChanged: (Bool, Bool) -> Void
+    var onZoomChanged: (Int) -> Void
 
     func makeUIView(context: Context) -> InkCanvasContainerView {
         let view = InkCanvasContainerView()
         view.canvasView.delegate = context.coordinator
         view.canvasView.drawingPolicy = UIDevice.current.userInterfaceIdiom == .pad ? .pencilOnly : .anyInput
+        view.onZoomChanged = { [weak coordinator = context.coordinator] percent in
+            coordinator?.parent.onZoomChanged(percent)
+        }
         return view
     }
 
     func updateUIView(_ view: InkCanvasContainerView, context: Context) {
         view.paper = paper
+        view.onZoomChanged = { [weak coordinator = context.coordinator] percent in
+            coordinator?.parent.onZoomChanged(percent)
+        }
         context.coordinator.parent = self
         context.coordinator.apply(drawing, revision: drawingRevision, to: view)
         context.coordinator.installToolPickerIfNeeded(for: view.canvasView)
+        context.coordinator.setToolPickerVisible(isToolPickerVisible, for: view.canvasView)
+        context.coordinator.apply(command, to: view)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -31,6 +51,7 @@ struct InkCanvasView: UIViewRepresentable {
         private weak var installedWindow: UIWindow?
         private var loadedRevision: Int?
         private var isApplyingDrawing = false
+        private var lastCommandID: Int?
 
         init(parent: InkCanvasView) {
             self.parent = parent
@@ -39,9 +60,11 @@ struct InkCanvasView: UIViewRepresentable {
         func apply(_ drawing: PKDrawing, revision: Int, to view: InkCanvasContainerView) {
             guard loadedRevision != revision else { return }
             isApplyingDrawing = true
+            view.canvasView.undoManager?.removeAllActions()
             view.canvasView.drawing = drawing
             isApplyingDrawing = false
             loadedRevision = revision
+            publishUndoState(for: view.canvasView)
         }
 
         func installToolPickerIfNeeded(for canvasView: PKCanvasView) {
@@ -61,9 +84,34 @@ struct InkCanvasView: UIViewRepresentable {
             installedWindow = window
         }
 
+        func setToolPickerVisible(_ visible: Bool, for canvasView: PKCanvasView) {
+            guard let picker = toolPicker else { return }
+            picker.setVisible(visible, forFirstResponder: canvasView)
+            if visible {
+                canvasView.becomeFirstResponder()
+            } else {
+                canvasView.resignFirstResponder()
+            }
+        }
+
+        func apply(_ command: (id: Int, action: InkCanvasCommand)?, to view: InkCanvasContainerView) {
+            guard let command, command.id != lastCommandID else { return }
+            lastCommandID = command.id
+            view.perform(command.action)
+            publishUndoState(for: view.canvasView)
+        }
+
+        private func publishUndoState(for canvasView: PKCanvasView) {
+            parent.onUndoStateChanged(
+                canvasView.undoManager?.canUndo ?? false,
+                canvasView.undoManager?.canRedo ?? false
+            )
+        }
+
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             guard !isApplyingDrawing else { return }
             parent.onDrawingChanged(canvasView.drawing)
+            publishUndoState(for: canvasView)
         }
     }
 }
@@ -82,6 +130,7 @@ final class InkCanvasContainerView: UIView, UIScrollViewDelegate {
     var paper: InkNotebook.Paper = .dotted {
         didSet { paperView.paper = paper }
     }
+    var onZoomChanged: (Int) -> Void = { _ in }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -161,6 +210,30 @@ final class InkCanvasContainerView: UIView, UIScrollViewDelegate {
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         centerPage()
+        let percent = Int((scrollView.zoomScale / max(scrollView.minimumZoomScale, 0.01)) * 100)
+        onZoomChanged(percent)
+    }
+
+    func perform(_ command: InkCanvasCommand) {
+        switch command {
+        case .undo:
+            canvasView.undoManager?.undo()
+        case .redo:
+            canvasView.undoManager?.redo()
+        case .zoomOut:
+            setZoom(scrollView.zoomScale - max(scrollView.minimumZoomScale * 0.25, 0.1))
+        case .zoomIn:
+            setZoom(scrollView.zoomScale + max(scrollView.minimumZoomScale * 0.25, 0.1))
+        case .fit:
+            setZoom(scrollView.minimumZoomScale)
+        }
+    }
+
+    private func setZoom(_ value: CGFloat) {
+        scrollView.setZoomScale(
+            min(max(value, scrollView.minimumZoomScale), scrollView.maximumZoomScale),
+            animated: true
+        )
     }
 
     private func configureZoomIfNeeded() {
@@ -174,6 +247,7 @@ final class InkCanvasContainerView: UIView, UIScrollViewDelegate {
             if !didConfigureInitialZoom {
                 scrollView.zoomScale = minimumZoom
                 didConfigureInitialZoom = true
+                onZoomChanged(100)
             } else if scrollView.zoomScale < minimumZoom {
                 scrollView.zoomScale = minimumZoom
             }

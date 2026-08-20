@@ -238,3 +238,31 @@ Decisions about the visual/interaction system. Full system in [`design/`](./desi
 **Rejected.** Faking iPad button haptics (impossible — no hardware); per-keystroke haptics in the editor (violates the coarse-bridge rule in `AGENTS.md`); a haptics token in `tokens.json` (haptics are semantic API calls, not visual values).
 
 **Implication (for implementation).** Prefer SwiftUI `.sensoryFeedback`; use `UICanvasFeedbackGenerator` for Ink snapping; gate custom haptics on an in-app toggle; branch on capability, never device model.
+
+---
+
+## ADR-013 — Model downloads are explicit native capability, outside the vault
+
+**Context.** Flint's AI thin slice needs a local GGUF model, but the vault must remain plain user content and plugins must not gain network access implicitly.
+
+**Decision.** A reviewed, static catalog exposes HTTPS model downloads from the native Swift UI only. A download requires an explicit user tap, writes to `Application Support/Flint/Models`, uses an identified `URLSession` background transfer so iOS can continue it while the app is suspended, and promotes a temporary file only after expected byte count and SHA-256 validation. The model provider remains a separate native layer; downloading a model does not grant plugins network or vault capabilities.
+
+**Rationale.** Keeping model binaries outside the vault avoids polluting or syncing gigabytes of derived runtime data. Native download control gives the app a clear security boundary and lets the provider consume a stable local path later. Size plus checksum validation prevents a partial or unexpected response from becoming an installed model.
+
+**Rejected.** Downloading through the webview; putting models in the vault; starting downloads without an explicit user choice; a remote mutable catalog without signature/versioning; allowing plugins to reuse the app's network capability.
+
+**Trade-off.** The first catalog is intentionally manual and will need a signed/versioned update mechanism before public distribution. iOS controls background execution time, so resume is reliable system-managed transfer rather than an always-running app process.
+
+---
+
+## ADR-014 — Local AI inference is a native provider behind a C shim
+
+**Context.** The AI thin slice needs to consume an installed GGUF model and stream tokens into SwiftUI. The WebView is intentionally limited to editor and plugin runtime, while Swift 6's explicit Clang module scanner cannot consume the wrapper's umbrella module because it exports C++ helper headers.
+
+**Decision.** Pin the StanfordBDHG `llama.cpp` XCFramework at `0.3.3` through SwiftPM. Keep the public Swift contract provider-agnostic (`AIProvider` + `AsyncThrowingStream<AIEvent, Error>`). Isolate the framework's C API behind a small C shim that exposes only opaque handles and coarse operations; serialize model/context access inside a native actor. The chat surface reads bounded vault context and renders streamed answer tokens; this slice cannot mutate the vault or invoke tools.
+
+**Rationale.** Native inference avoids per-token WebView bridge chatter and keeps model memory/lifecycle outside the editor runtime. The C shim prevents C++ headers from leaking into Swift and gives the provider a stable, testable boundary. The actor prevents concurrent mutation of a llama context.
+
+**Rejected.** Running inference in JavaScript/WKWebView; importing the framework's full umbrella module into Swift; making the database or model files authoritative vault content; adding remote providers or agent tools to this slice.
+
+**Trade-off.** The XCFramework is pinned to a wrapper release and must be upgraded deliberately. The simulator validates build/UI only; real generation still needs an installed model and a physical Metal-capable device. Qwen3 and Phi-4 now have explicit templates; unknown future models still use a conservative fallback and require a deliberate catalog update.
